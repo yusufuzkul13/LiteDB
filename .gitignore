@@ -1,0 +1,11 @@
+# LiteDB SQL Visualizer — Gitignore (LiteDB-specific)
+
+# Private data: DB credentials (encrypted) + diagram layouts
+data/
+
+# Environment: encryption key (AES-256)
+.env
+
+# Dependencies
+node_modules/
+

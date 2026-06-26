@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LiteDB — Veritabanı Diyagram Editörü</title>
+  <meta name="description"
+    content="Hafif, hızlı ve modern veritabanı diyagram tasarım aracı. Tablolar, ilişkiler, notlar ve SQL çıktısı." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet" />
+  <script type="module" crossorigin src="/assets/index-DY8QlJ0b.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-D5stEh36.css">
+</head>
+
+<body>
+  <!-- Splash / Welcome Screen -->
+  <div id="splash-screen" class="splash-screen">
+    <div class="splash-bg-grid"></div>
+    <div class="splash-glow splash-glow-1"></div>
+    <div class="splash-glow splash-glow-2"></div>
+    <div class="splash-content">
+      <div class="splash-logo">
+        <div class="splash-logo-icon">
+          <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+            <rect x="2" y="10" width="20" height="28" rx="4" fill="#6366f1" />
+            <rect x="26" y="10" width="20" height="28" rx="4" fill="#8b5cf6" />
+            <line x1="22" y1="24" x2="26" y2="24" stroke="#c4b5fd" stroke-width="2.5" />
+            <circle cx="22" cy="24" r="2" fill="#c4b5fd" />
+            <circle cx="26" cy="24" r="2" fill="#c4b5fd" />
+          </svg>
+        </div>
+        <h1 class="splash-title">LiteDB</h1>
+        <p class="splash-subtitle">Veritabanı Diyagram Editörü</p>
+      </div>
+      <p class="splash-desc">Tablolarınızı, ilişkilerinizi ve SQL yapılarınızı görsel olarak tasarlayın.</p>
+      <div class="splash-actions">
+        <button id="btn-new-diagram" class="btn-primary btn-lg">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+          Yeni Diyagram
+        </button>
+        <button id="btn-import-diagram" class="btn-secondary btn-lg">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+            <polyline points="17 8 12 3 7 8" />
+            <line x1="12" y1="3" x2="12" y2="15" />
+          </svg>
+          JSON Aç
+        </button>
+      </div>
+      <div id="recent-diagrams" class="recent-diagrams" style="display:none;">
+        <h3>Son Diyagramlar</h3>
+        <div id="recent-list" class="recent-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main App -->
+  <div id="app" class="app" style="display:none;">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-left">
+        <div class="logo-small">
+          <svg width="22" height="22" viewBox="0 0 48 48" fill="none">
+            <rect x="2" y="10" width="20" height="28" rx="4" fill="#6366f1" />
+            <rect x="26" y="10" width="20" height="28" rx="4" fill="#8b5cf6" />
+            <line x1="22" y1="24" x2="26" y2="24" stroke="#c4b5fd" stroke-width="2.5" />
+            <circle cx="22" cy="24" r="2" fill="#c4b5fd" />
+            <circle cx="26" cy="24" r="2" fill="#c4b5fd" />
+          </svg>
+          <span>LiteDB</span>
+        </div>
+        <div class="diagram-name-wrap">
+          <input id="diagram-name" class="diagram-name-input" value="Yeni Diyagram" />
+        </div>
+      </div>
+      <div class="header-center">
+        <div class="toolbar">
+          <button id="tool-select" class="tool-btn active" title="Seç (S)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M4 0l16 12-7 2-4 8z" />
+            </svg>
+          </button>
+          <button id="tool-hand" class="tool-btn" title="Taşı (H)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path
+                d="M18 11V6a2 2 0 00-4 0v1M14 7V4a2 2 0 00-4 0v1M10 5V3a2 2 0 00-4 0v4.5M6 7.5V16a6 6 0 006 6 6 6 0 006-6v-5" />
+            </svg>
+          </button>
+          <div class="tool-divider"></div>
+          <button id="btn-add-table" class="tool-btn" title="Tablo Ekle (T)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <line x1="3" y1="9" x2="21" y2="9" />
+              <line x1="3" y1="15" x2="21" y2="15" />
+              <line x1="12" y1="3" x2="12" y2="21" />
+            </svg>
+          </button>
+          <button id="btn-add-note" class="tool-btn" title="Not Ekle (N)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+              <polyline points="14 2 14 8 20 8" />
+            </svg>
+          </button>
+          <button id="btn-add-area" class="tool-btn" title="Alan Ekle (A)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-dasharray="4 2">
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+            </svg>
+          </button>
+          <div class="tool-divider"></div>
+          <button id="btn-undo" class="tool-btn" title="Geri Al (Ctrl+Z)" disabled>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 7h10a6 6 0 010 12H3" />
+              <polyline points="7 3 3 7 7 11" />
+            </svg>
+          </button>
+          <button id="btn-redo" class="tool-btn" title="İleri Al (Ctrl+Y)" disabled>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 7H11a6 6 0 000 12h10" />
+              <polyline points="17 3 21 7 17 11" />
+            </svg>
+          </button>
+          <div class="tool-divider"></div>
+          <button id="btn-fit" class="tool-btn" title="Sığdır (F)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M8 3H5a2 2 0 00-2 2v3M21 8V5a2 2 0 00-2-2h-3M3 16v3a2 2 0 002 2h3M16 21h3a2 2 0 002-2v-3" />
+            </svg>
+          </button>
+          <button id="btn-zoom-in" class="tool-btn" title="Yakınlaştır (+)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              <line x1="11" y1="8" x2="11" y2="14" />
+              <line x1="8" y1="11" x2="14" y2="11" />
+            </svg>
+          </button>
+          <button id="btn-zoom-out" class="tool-btn" title="Uzaklaştır (-)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              <line x1="8" y1="11" x2="14" y2="11" />
+            </svg>
+          </button>
+          <span id="zoom-level" class="zoom-label">100%</span>
+        </div>
+      </div>
+      <div class="header-right">
+        <button id="btn-sql" class="btn-ghost" title="SQL Görüntüle">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="16 18 22 12 16 6" />
+            <polyline points="8 6 2 12 8 18" />
+          </svg>
+          SQL
+        </button>
+        <button id="btn-export" class="btn-ghost" title="Dışa Aktar">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
+          Aktar
+        </button>
+        <button id="btn-theme" class="icon-btn" title="Tema">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="5" />
+            <line x1="12" y1="1" x2="12" y2="3" />
+            <line x1="12" y1="21" x2="12" y2="23" />
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+            <line x1="1" y1="12" x2="3" y2="12" />
+            <line x1="21" y1="12" x2="23" y2="12" />
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+          </svg>
+        </button>
+        <button id="btn-sync" class="btn-ghost" title="Veritabanından Senkronize Et" style="display:flex;align-items:center;gap:6px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M1 4v6h6"/><path d="M23 20v-6h-6"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>
+          Sync
+        </button>
+        <button id="btn-home" class="btn-ghost" title="Ana Sayfa - Kayıtlı Diyagramlar">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+            <polyline points="9 22 9 12 15 12 15 22" />
+          </svg>
+          Ana Sayfa
+        </button>
+        <div id="db-status-indicator" class="db-status-indicator">
+          <span class="db-status-dot db-status-none"></span> DB Bağlantısı Yok
+        </div>
+        <button id="btn-save" class="btn-primary" title="Kaydet (Ctrl+S)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z" />
+            <polyline points="17 21 17 13 7 13 7 21" />
+            <polyline points="7 3 7 8 15 8" />
+          </svg>
+          Kaydet
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Layout -->
+    <div class="main-layout">
+      <!-- Left Sidebar -->
+      <aside class="sidebar sidebar-left">
+        <div class="sidebar-tabs">
+          <button class="sidebar-tab active" data-tab="tables">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <line x1="3" y1="9" x2="21" y2="9" />
+              <line x1="3" y1="15" x2="21" y2="15" />
+            </svg>
+            Tablolar
+          </button>
+          <button class="sidebar-tab" data-tab="objects">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="12 2 2 7 12 12 22 7 12 2" />
+              <polyline points="2 17 12 22 22 17" />
+              <polyline points="2 12 12 17 22 12" />
+            </svg>
+            Objeler
+          </button>
+          <button class="sidebar-tab" data-tab="relationships">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" />
+              <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" />
+            </svg>
+            İlişkiler
+          </button>
+          <button class="sidebar-tab" data-tab="notes">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+              <polyline points="14 2 14 8 20 8" />
+            </svg>
+            Notlar
+          </button>
+          <button class="sidebar-tab" data-tab="enums">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="8" y1="6" x2="21" y2="6" />
+              <line x1="8" y1="12" x2="21" y2="12" />
+              <line x1="8" y1="18" x2="21" y2="18" />
+              <line x1="3" y1="6" x2="3.01" y2="6" />
+              <line x1="3" y1="12" x2="3.01" y2="12" />
+              <line x1="3" y1="18" x2="3.01" y2="18" />
+            </svg>
+            Enumlar
+          </button>
+        </div>
+
+        <!-- Objects Tab -->
+        <div id="tab-objects" class="tab-content">
+          <div class="tab-header"
+            style="flex-direction:column; align-items:stretch; gap:8px; padding:10px 12px; border-bottom:1px solid var(--border);">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span class="tab-count">Nesne Listesi</span>
+            </div>
+            <div class="search-box-wrap" style="position:relative;">
+              <input id="object-search-input" type="text" placeholder="Objelerde ara..."
+                style="width:100%; padding:6px 10px 6px 28px; background:var(--surface); border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:0.8rem; outline:none;" />
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text2)" stroke-width="2"
+                style="position:absolute; left:8px; top:50%; transform:translateY(-50%); pointer-events:none;">
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+            </div>
+          </div>
+          <div class="objects-accordion-container"
+            style="overflow-y:auto; flex:1; padding: 4px 8px 8px; display:flex; flex-direction:column; gap:8px;">
+            <!-- Views Section -->
+            <div class="accordion-item">
+              <div class="accordion-trigger" data-target="views-list">
+                <span>Görünümler (Views)</span>
+                <span class="accordion-badge" id="view-count">0</span>
+              </div>
+              <div id="views-list" class="accordion-content-list active"></div>
+            </div>
+            <!-- Procedures Section -->
+            <div class="accordion-item">
+              <div class="accordion-trigger" data-target="procs-list">
+                <span>Prosedürler (Procs)</span>
+                <span class="accordion-badge" id="proc-count">0</span>
+              </div>
+              <div id="procs-list" class="accordion-content-list"></div>
+            </div>
+            <!-- Functions Section -->
+            <div class="accordion-item">
+              <div class="accordion-trigger" data-target="funcs-list">
+                <span>Fonksiyonlar (Funcs)</span>
+                <span class="accordion-badge" id="func-count">0</span>
+              </div>
+              <div id="funcs-list" class="accordion-content-list"></div>
+            </div>
+            <!-- Triggers Section -->
+            <div class="accordion-item">
+              <div class="accordion-trigger" data-target="triggers-list">
+                <span>Tetikleyiciler (Triggers)</span>
+                <span class="accordion-badge" id="trigger-count">0</span>
+              </div>
+              <div id="triggers-list" class="accordion-content-list"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tables Tab -->
+        <div id="tab-tables" class="tab-content active">
+          <div class="tab-header">
+            <span class="tab-count" id="table-count">0 tablo</span>
+            <button id="add-table-btn" class="add-btn" title="Tablo Ekle">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+            </button>
+          </div>
+          <div id="tables-list" class="item-list"></div>
+        </div>
+
+        <!-- Relationships Tab -->
+        <div id="tab-relationships" class="tab-content">
+          <div class="tab-header">
+            <span class="tab-count" id="rel-count">0 ilişki</span>
+          </div>
+          <div id="relationships-list" class="item-list"></div>
+        </div>
+
+        <!-- Notes Tab -->
+        <div id="tab-notes" class="tab-content">
+          <div class="tab-header">
+            <span class="tab-count" id="note-count">0 not</span>
+            <button id="add-note-btn" class="add-btn" title="Not Ekle">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+            </button>
+          </div>
+          <div id="notes-list" class="item-list"></div>
+        </div>
+
+        <!-- Enums Tab -->
+        <div id="tab-enums" class="tab-content">
+          <div class="tab-header">
+            <span class="tab-count" id="enum-count">0 enum</span>
+            <button id="add-enum-btn" class="add-btn" title="Enum Ekle">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+            </button>
+          </div>
+          <div id="enums-list" class="item-list"></div>
+        </div>
+      </aside>
+
+      <!-- Canvas -->
+      <div class="canvas-wrapper" id="canvas-wrapper">
+        <svg id="canvas" class="canvas" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <pattern id="grid-pattern" width="20" height="20" patternUnits="userSpaceOnUse">
+              <path d="M 20 0 L 0 0 0 20" fill="none" stroke="var(--grid-color)" stroke-width="0.5" />
+            </pattern>
+            <marker id="arrow-end" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+              <polygon points="0 0, 10 3.5, 0 7" fill="var(--rel-color)" />
+            </marker>
+            <marker id="arrow-start" markerWidth="10" markerHeight="7" refX="1" refY="3.5" orient="auto-start-reverse">
+              <polygon points="0 0, 10 3.5, 0 7" fill="var(--rel-color)" />
+            </marker>
+          </defs>
+          <rect id="canvas-bg" width="100%" height="100%" fill="url(#grid-pattern)" />
+          <g id="canvas-root">
+            <g id="areas-layer"></g>
+            <g id="relationships-layer"></g>
+            <g id="tables-layer"></g>
+            <g id="notes-layer"></g>
+            <g id="objects-layer"></g>
+          </g>
+          <!-- Drag link preview line -->
+          <line id="link-preview" x1="0" y1="0" x2="0" y2="0" stroke="var(--primary)" stroke-width="2"
+            stroke-dasharray="6 3" opacity="0" pointer-events="none" />
+        </svg>
+
+        <!-- Floating zoom controls -->
+        <div class="float-controls">
+          <button id="fc-zoom-in" class="fc-btn" title="+">+</button>
+          <span id="fc-zoom-level">100%</span>
+          <button id="fc-zoom-out" class="fc-btn" title="-">−</button>
+          <button id="fc-fit" class="fc-btn" title="Sığdır">⊡</button>
+        </div>
+
+        <!-- Lineage Info Button (Top-Right of Viewport) -->
+        <button id="lineage-info-btn"
+          style="position: absolute; top: 16px; right: 16px; width: 34px; height: 34px; border-radius: 50%; background: rgba(99, 102, 241, 0.15); border: 1.5px solid rgba(99, 102, 241, 0.5); color: #a5b4fc; cursor: pointer; display: none; align-items: center; justify-content: center; z-index: 100; backdrop-filter: blur(8px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3); transition: all 0.2s ease; padding: 0;"
+          title="Veri Akışı Göstergeleri">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display: block;">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="16" x2="12" y2="12"></line>
+            <line x1="12" y1="8" x2="12.01" y2="8"></line>
+          </svg>
+        </button>
+
+        <!-- Lineage Flow Legend -->
+        <div id="lineage-legend"
+          style="position: absolute; top: 60px; right: 16px; width: 290px; background: rgba(10, 15, 30, 0.97); border: 1px solid rgba(99,102,241,0.25); border-radius: 12px; padding: 0; box-shadow: 0 8px 32px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.05); z-index: 100; font-family: 'Inter', 'Segoe UI', sans-serif; pointer-events: auto; color: var(--text); display: none; flex-direction: column; backdrop-filter: blur(16px); overflow: hidden; text-align: left;">
+
+          <!-- Header -->
+          <div
+            style="display: flex; align-items: center; gap: 9px; padding: 10px 14px; background: linear-gradient(135deg, rgba(99,102,241,0.2) 0%, rgba(139,92,246,0.1) 100%); border-bottom: 1px solid rgba(99,102,241,0.2);">
+            
+            <div style="width: 22px; height: 22px; background: linear-gradient(135deg, #6366f1, #8b5cf6); border-radius: 6px; display: flex; align-items: center; justify-content: center; color: #fff; flex-shrink: 0; box-shadow: 0 2px 6px rgba(99, 102, 241, 0.4);">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="display: block;">
+                <line x1="12" y1="16" x2="12" y2="12"></line>
+                <line x1="12" y1="8" x2="12.01" y2="8"></line>
+              </svg>
+            </div>
+      
+            <div>
+              <div
+                style="font-size: 0.72rem; font-weight: 800; letter-spacing: 1px; color: #a5b4fc; text-transform: uppercase;">
+                Veri Akışı Göstergeleri</div>
+              <div style="font-size: 0.62rem; color: rgba(148,163,184,0.7); margin-top: 1px;">SQL lineage &amp; column semantics</div>
+            </div>
+          </div>
+
+          <!-- Section: Connection Types -->
+          <div style="padding: 10px 14px 6px;">
+            <div
+              style="font-size: 0.6rem; font-weight: 700; letter-spacing: 1.2px; color: rgba(148,163,184,0.5); text-transform: uppercase; margin-bottom: 7px;">
+              Bağlantı Türleri</div>
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+
+              <div style="display: flex; align-items: flex-start; gap: 10px;">
+                <div
+                  style="flex-shrink: 0; width: 28px; display: flex; align-items: center; justify-content: center; padding-top: 2px;">
+                  <span style="width: 20px; height: 0; border-top: 2px dashed #6366f1; display: inline-block;"></span>
+                </div>
+                <div>
+                  <div style="font-size: 0.74rem; font-weight: 600; color: #c7d2fe; line-height: 1.2;">View Çıktı Akışı
+                  </div>
+                  <div style="font-size: 0.65rem; color: rgba(148,163,184,0.65); margin-top: 1px; line-height: 1.4;">
+                    Dependency — View'dan çıkan kolonların bağlandığı kaynağı gösterir.</div>
+                </div>
+              </div>
+
+              <div style="display: flex; align-items: flex-start; gap: 10px;">
+                <div
+                  style="flex-shrink: 0; width: 28px; display: flex; align-items: center; justify-content: center; padding-top: 2px;">
+                  <span
+                    style="width: 20px; height: 2px; background: #10b981; display: inline-block; border-radius: 2px;"></span>
+                </div>
+                <div>
+                  <div style="font-size: 0.74rem; font-weight: 600; color: #6ee7b7; line-height: 1.2;">Veri Okuma (READ)
+                  </div>
+                  <div style="font-size: 0.65rem; color: rgba(148,163,184,0.65); margin-top: 1px; line-height: 1.4;">
+                    SELECT ile tablodan veri çekildiğini gösterir.</div>
+                </div>
+              </div>
+
+              <div style="display: flex; align-items: flex-start; gap: 10px;">
+                <div
+                  style="flex-shrink: 0; width: 28px; display: flex; align-items: center; justify-content: center; padding-top: 2px;">
+                  <span
+                    style="width: 20px; height: 2px; background: #ef4444; display: inline-block; border-radius: 2px;"></span>
+                </div>
+                <div>
+                  <div style="font-size: 0.74rem; font-weight: 600; color: #fca5a5; line-height: 1.2;">Veri Yazma
+                    (WRITE)</div>
+                  <div style="font-size: 0.65rem; color: rgba(148,163,184,0.65); margin-top: 1px; line-height: 1.4;">
+                    INSERT / UPDATE / DELETE içeren bağımlılık.</div>
+                </div>
+              </div>
+
+              <div style="display: flex; align-items: flex-start; gap: 10px;">
+                <div
+                  style="flex-shrink: 0; width: 28px; display: flex; align-items: center; justify-content: center; padding-top: 2px;">
+                  <span style="width: 20px; height: 0; border-top: 2px dashed #f59e0b; display: inline-block;"></span>
+                </div>
+                <div>
+                  <div style="font-size: 0.74rem; font-weight: 600; color: #fcd34d; line-height: 1.2;">Tetikleyici
+                    (TRIGGER)</div>
+                  <div style="font-size: 0.65rem; color: rgba(148,163,184,0.65); margin-top: 1px; line-height: 1.4;">
+                    Tablo olayı (INSERT/UPDATE) trigger'ı çalıştırır.</div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- Divider -->
+          <div style="height: 1px; background: rgba(255,255,255,0.05); margin: 4px 0;"></div>
+
+          <!-- Section: Canvas Symbols -->
+          <div style="padding: 6px 14px 6px;">
+            <div
+              style="font-size: 0.6rem; font-weight: 700; letter-spacing: 1.2px; color: rgba(148,163,184,0.5); text-transform: uppercase; margin-bottom: 7px;">
+              Kanvas Sembolleri</div>
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+
+              <div style="display: flex; align-items: flex-start; gap: 10px;">
+                <div
+                  style="flex-shrink: 0; width: 28px; display: flex; align-items: center; justify-content: center; padding-top: 1px;">
+                  <span
+                    style="width: 13px; height: 13px; background: #f59e0b; transform: rotate(45deg); display: inline-block; box-shadow: 0 0 6px rgba(245,158,11,0.5);"></span>
+                </div>
+                <div>
+                  <div style="font-size: 0.74rem; font-weight: 600; color: #fcd34d; line-height: 1.2;">Koşul Filtresi
+                    (WHERE)</div>
+                  <div style="font-size: 0.65rem; color: rgba(148,163,184,0.65); margin-top: 1px; line-height: 1.4;">
+                    Bağlantı hattı üstünde WHERE koşulunu ifade eder.</div>
+                </div>
+              </div>
+
+              <div style="display: flex; align-items: flex-start; gap: 10px;">
+                <div style="flex-shrink: 0; width: 28px; display: flex; align-items: center; justify-content: center;">
+                  <span
+                    style="background: rgba(10,15,30,0.9); border: 1px solid rgba(245,158,11,0.6); color: #f59e0b; border-radius: 4px; padding: 1px 4px; font-size: 0.58rem; font-weight: 800; font-family: monospace; letter-spacing: 0;">ON</span>
+                </div>
+                <div>
+                  <div style="font-size: 0.74rem; font-weight: 600; color: #c7d2fe; line-height: 1.2;">Tablo JOIN Koşulu
+                  </div>
+                  <div style="font-size: 0.65rem; color: rgba(148,163,184,0.65); margin-top: 1px; line-height: 1.4;">
+                    Tabloların birleşim eşleşme ifadesi (A.id = B.id).</div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- Divider -->
+          <div style="height: 1px; background: rgba(255,255,255,0.05); margin: 4px 0;"></div>
+
+          <!-- Section: Column Badges -->
+          <div style="padding: 6px 14px 12px;">
+            <div
+              style="font-size: 0.6rem; font-weight: 700; letter-spacing: 1.2px; color: rgba(148,163,184,0.5); text-transform: uppercase; margin-bottom: 7px;">
+              Kolon Rozetleri</div>
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+
+              <div style="display: flex; align-items: flex-start; gap: 10px;">
+                <div style="flex-shrink: 0; width: 28px; display: flex; align-items: center; justify-content: center;">
+                  <span
+                    style="background: linear-gradient(135deg, rgba(99,102,241,0.3), rgba(139,92,246,0.2)); border: 1px solid rgba(139,92,246,0.6); color: #c4b5fd; border-radius: 4px; padding: 1px 4px; font-size: 0.62rem; font-weight: 800; font-family: monospace;">Σ</span>
+                </div>
+                <div>
+                  <div style="font-size: 0.74rem; font-weight: 600; color: #c4b5fd; line-height: 1.2;">Agrege Kolon
+                    (Aggregation)</div>
+                  <div style="font-size: 0.65rem; color: rgba(148,163,184,0.65); margin-top: 1px; line-height: 1.4;">
+                    COUNT, SUM, AVG, MIN, MAX vb. fonksiyonlar kullanılmış.</div>
+                </div>
+              </div>
+
+              <div style="display: flex; align-items: flex-start; gap: 10px;">
+                <div style="flex-shrink: 0; width: 28px; display: flex; align-items: center; justify-content: center;">
+                  <span
+                    style="background: rgba(59,130,246,0.2); border: 1px solid rgba(96,165,250,0.6); color: #93c5fd; border-radius: 4px; padding: 1px 3px; font-size: 0.58rem; font-weight: 800; font-family: monospace;">f(x)</span>
+                </div>
+                <div>
+                  <div style="font-size: 0.74rem; font-weight: 600; color: #93c5fd; line-height: 1.2;">Hesaplanmış /
+                    Formül (Calculated)</div>
+                  <div style="font-size: 0.65rem; color: rgba(148,163,184,0.65); margin-top: 1px; line-height: 1.4;">
+                    Matematiksel işlem (+, -, *, /) veya CASE WHEN barındırır.</div>
+                </div>
+              </div>
+
+              <div style="display: flex; align-items: flex-start; gap: 10px;">
+                <div style="flex-shrink: 0; width: 28px; display: flex; align-items: center; justify-content: center;">
+                  <span
+                    style="background: rgba(16,185,129,0.2); border: 1px solid rgba(52,211,153,0.5); color: #6ee7b7; border-radius: 4px; padding: 1px 4px; font-size: 0.58rem; font-weight: 800; font-family: monospace;">GRP</span>
+                </div>
+                <div>
+                  <div style="font-size: 0.74rem; font-weight: 600; color: #6ee7b7; line-height: 1.2;">Grup Anahtarı
+                    (Group By)</div>
+                  <div style="font-size: 0.65rem; color: rgba(148,163,184,0.65); margin-top: 1px; line-height: 1.4;">
+                    GROUP BY ifadesinde geçen, satırları birleştiren anahtar.</div>
+                </div>
+              </div>
+
+              <div style="display: flex; align-items: flex-start; gap: 10px;">
+                <div style="flex-shrink: 0; width: 28px; display: flex; align-items: center; justify-content: center;">
+                  <span
+                    style="background: rgba(245,158,11,0.15); border: 1px solid rgba(245,158,11,0.5); color: #fcd34d; border-radius: 4px; padding: 1px 3px; font-size: 0.56rem; font-weight: 800; font-family: monospace;">LEFT</span>
+                </div>
+                <div>
+                  <div style="font-size: 0.74rem; font-weight: 600; color: #fcd34d; line-height: 1.2;">Tablo JOIN Tipi
+                  </div>
+                  <div style="font-size: 0.65rem; color: rgba(148,163,184,0.65); margin-top: 1px; line-height: 1.4;">
+                    Tablonun View'a bağlanma yöntemi (LEFT / INNER JOIN vb.).</div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Empty state -->
+        <div id="empty-state" class="empty-state">
+          <div class="empty-icon">
+            <svg width="64" height="64" viewBox="0 0 48 48" fill="none">
+              <rect x="2" y="10" width="20" height="28" rx="4" fill="var(--primary)" opacity="0.3" />
+              <rect x="26" y="10" width="20" height="28" rx="4" fill="var(--secondary)" opacity="0.3" />
+              <line x1="22" y1="24" x2="26" y2="24" stroke="var(--primary)" stroke-width="2.5" opacity="0.5" />
+            </svg>
+          </div>
+          <p>Tablo ekleyerek başlayın</p>
+          <button id="empty-add-table" class="btn-primary">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            Tablo Ekle
+          </button>
+        </div>
+      </div>
+
+      <!-- Right Panel: Inspector -->
+      <aside class="sidebar sidebar-right" id="right-panel" style="display:none; position:relative;">
+        <div id="right-panel-resizer" class="sidebar-resizer-right"
+          style="position:absolute; left:0; top:0; bottom:0; width:6px; cursor:ew-resize; z-index:100; transition: background 0.15s;">
+        </div>
+        <div class="inspector-header">
+          <span id="inspector-title">Tablo Özellikleri</span>
+          <button id="close-inspector" class="icon-btn">✕</button>
+        </div>
+        <div id="inspector-content" class="inspector-content"></div>
+      </aside>
+    </div>
+  </div>
+
+  <!-- SQL Modal -->
+  <div id="sql-modal" class="modal-overlay" style="display:none;">
+    <div class="modal modal-lg">
+      <div class="modal-header">
+        <h3>SQL Çıktısı</h3>
+        <div class="modal-header-actions">
+          <select id="sql-dialect" class="select-input">
+            <option value="mysql">MySQL</option>
+            <option value="postgresql">PostgreSQL</option>
+            <option value="sqlite">SQLite</option>
+            <option value="mssql">MS SQL Server</option>
+          </select>
+          <button id="copy-sql" class="btn-ghost">Kopyala</button>
+          <button class="icon-btn modal-close" data-modal="sql-modal">✕</button>
+        </div>
+      </div>
+      <div class="modal-body">
+        <pre id="sql-output" class="code-block"></pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- Export Modal -->
+  <div id="export-modal" class="modal-overlay" style="display:none;">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Dışa Aktar</h3>
+        <button class="icon-btn modal-close" data-modal="export-modal">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="export-options">
+          <button class="export-btn" id="export-json">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="16 18 22 12 16 6" />
+              <polyline points="8 6 2 12 8 18" />
+            </svg>
+            <span>JSON</span>
+            <small>Diyagramı kaydet / yükle</small>
+          </button>
+          <button class="export-btn" id="export-sql-file">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+              <polyline points="14 2 14 8 20 8" />
+            </svg>
+            <span>SQL Dosyası</span>
+            <small>CREATE TABLE SQL'i</small>
+          </button>
+          <button class="export-btn" id="export-png">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <circle cx="8.5" cy="8.5" r="1.5" />
+              <polyline points="21 15 16 10 5 21" />
+            </svg>
+            <span>PNG Görseli</span>
+            <small>Diyagram ekran görüntüsü</small>
+          </button>
+          <button class="export-btn" id="export-svg-file">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="2" y1="12" x2="22" y2="12" />
+              <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" />
+            </svg>
+            <span>SVG Vektör</span>
+            <small>Vektör formatı</small>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirm Modal -->
+  <div id="confirm-modal" class="modal-overlay" style="display:none;">
+    <div class="modal modal-sm">
+      <div class="modal-header">
+        <h3 id="confirm-title">Emin misiniz?</h3>
+      </div>
+      <div class="modal-body">
+        <p id="confirm-message"></p>
+        <div class="modal-footer">
+          <button id="confirm-cancel" class="btn-ghost">İptal</button>
+          <button id="confirm-ok" class="btn-danger">Sil</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Context Menu -->
+  <div id="context-menu" class="context-menu" style="display:none;">
+    <ul id="context-menu-list"></ul>
+  </div>
+
+  <!-- Toast Container -->
+  <div id="toast-container" class="toast-container"></div>
+
+
+  <!-- Yeni Diyagram / Baglantu Modal -->
+  <div id="conn-modal" class="conn-modal-overlay" style="display:none;">
+    <div class="conn-modal-box">
+      <h2 class="conn-modal-title">Yeni Diyagram</h2>
+      <div class="conn-modal-field">
+        <label>Diyagram Adı</label>
+        <input id="conn-diag-name" type="text" placeholder="Yeni Diyagram" value="Yeni Diyagram" />
+      </div>
+      <div class="conn-modal-section-title">DB Bağlantısı</div>
+      <div id="conn-saved-list" class="conn-saved-list" style="margin-bottom:12px;"></div>
+      <details class="conn-new-details">
+        <summary>+ Yeni Bağlantı Ekle</summary>
+        <div class="conn-new-form">
+          <div class="conn-modal-field"><label>Bağlantı Adı</label><input id="conn-name" type="text" placeholder="Prod DB" /></div>
+          <div class="conn-row-2">
+            <div class="conn-modal-field"><label>Sunucu</label><input id="conn-server" type="text" placeholder="localhost" /></div>
+            <div class="conn-modal-field" style="max-width:90px;"><label>Port</label><input id="conn-port" type="number" value="1433" /></div>
+          </div>
+          <div class="conn-modal-field"><label>Veritabanı</label><input id="conn-database" type="text" placeholder="MyDatabase" /></div>
+          <div class="conn-row-2">
+            <div class="conn-modal-field"><label>Kullanıcı</label><input id="conn-user" type="text" placeholder="sa" /></div>
+            <div class="conn-modal-field"><label>Şifre</label><input id="conn-pass" type="password" placeholder="..." /></div>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;margin-top:8px;">
+            <button id="conn-test-btn" class="btn-secondary" style="flex:1;">Bağlantıyı Test Et</button>
+            <span id="conn-test-result" style="font-size:0.78rem;"></span>
+          </div>
+        </div>
+      </details>
+      <div id="conn-selected-info" style="font-size:0.78rem;color:var(--text2);margin-top:8px;"></div>
+      <div class="conn-modal-actions">
+        <button id="conn-cancel-btn" class="btn-secondary">İptal</button>
+        <button id="conn-create-btn" class="btn-primary">Oluştur</button>
+      </div>
+    </div>
+  </div>
+
+  <input type="file" id="file-import" accept=".json" style="display:none;" />
+</body>
+
+</html>
