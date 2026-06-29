@@ -34,8 +34,8 @@ Make sure you have [Node.js](https://nodejs.org/) installed.
 ### Installation
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/Sql-Visualizer.git
-   cd Sql-Visualizer/drawdb/LiteDB
+   git clone https://github.com/yusufuzkul13/LiteDB.git
+   cd LiteDB
    ```
 2. Install dependencies:
    ```bash
