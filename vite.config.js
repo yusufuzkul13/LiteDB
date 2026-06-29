@@ -11,7 +11,9 @@ const rootDir     = path.resolve(__dirname);                      // LiteDB/
 const dataDir     = path.join(rootDir, 'data');                   // LiteDB/data/
 const connsDir    = path.join(dataDir, 'connections');            // LiteDB/data/connections/
 const diagsDir    = path.join(dataDir, 'diagrams');               // LiteDB/data/diagrams/
-const sqlProjDir  = path.resolve(__dirname, '../sql/projects/default'); // sql/projects/default/
+const sqlProjDir  = fs.existsSync(path.resolve(__dirname, '../drawdb/sql/projects/default'))
+  ? path.resolve(__dirname, '../drawdb/sql/projects/default')
+  : path.resolve(__dirname, '../sql/projects/default');
 
 // ── Encryption (AES-256-CBC) ─────────────────────────────────────────────────
 function getKey() {
@@ -500,14 +502,35 @@ export default defineConfig({
                 });
               }
 
-              // Write .sql files into sql/projects/default/tables/other/
-              const otherDir = path.join(sqlProjDir, 'tables', 'other');
-              ensureDir(otherDir);
+              // Write .sql files into the appropriate folder under sql/projects/default/tables/
+              const tablesDir = path.join(sqlProjDir, 'tables');
+              ensureDir(tablesDir);
+              
+              // Map to track which folder contains which table file
+              const existingTableFolders = {};
+              if (fs.existsSync(tablesDir)) {
+                for (const folder of fs.readdirSync(tablesDir)) {
+                  const fp = path.join(tablesDir, folder);
+                  if (fs.statSync(fp).isDirectory()) {
+                    for (const file of fs.readdirSync(fp)) {
+                      if (file.endsWith('.sql')) {
+                        const tName = file.replace('.sql', '');
+                        existingTableFolders[tName.toLowerCase()] = folder;
+                      }
+                    }
+                  }
+                }
+              }
+
               let added = 0, updated = 0;
               for (const [tName, tbl] of Object.entries(tableMap)) {
-                const filePath = path.join(otherDir, `${tName}.sql`);
+                const folder = existingTableFolders[tName.toLowerCase()] || 'other';
+                const folderPath = path.join(tablesDir, folder);
+                ensureDir(folderPath);
+                
+                const filePath = path.join(folderPath, `${tName}.sql`);
                 const existed  = fs.existsSync(filePath);
-                const mock     = { name: tName, folder: 'other', fields: tbl.fields };
+                const mock     = { name: tName, folder: folder, fields: tbl.fields };
                 fs.writeFileSync(filePath, generateTableSql(mock), 'utf-8');
                 existed ? updated++ : added++;
               }
