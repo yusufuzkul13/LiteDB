@@ -33,11 +33,102 @@ export class UIController {
 
     document.getElementById("btn-add-area").addEventListener("click", () => this.addNewArea());
 
-    document.getElementById("add-enum-btn").addEventListener("click", () => this.addNewEnum());
+      document.getElementById("btn-import-sql-table")?.addEventListener("click", () => {
+        document.getElementById("sql-import-modal").style.display = "flex";
+        document.getElementById("sql-import-input").value = "";
+      });
+
+      document.getElementById("btn-execute-sql-import")?.addEventListener("click", () => {
+        const sqlInput = document.getElementById("sql-import-input").value;
+        try {
+          const newTable = this.parseDDLToTable(sqlInput);
+          stateManager.addTable(newTable);
+          document.getElementById("sql-import-modal").style.display = "none";
+          this.cc.selectElement("table", newTable.id);
+          this.cc.showToast(`✅ "${newTable.name}" tablosu SQL'den başarıyla eklendi!`);
+        } catch (err) {
+          alert("Hata: " + err.message);
+        }
+      });
+
+      document.getElementById("add-db-object-btn")?.addEventListener("click", () => {
+        document.getElementById("db-object-modal-title").innerText = "Yeni Veritabanı Nesnesi Tanımla";
+        document.getElementById("db-object-edit-id").value = "";
+        document.getElementById("db-object-name").value = "";
+        document.getElementById("db-object-type").disabled = false;
+        document.getElementById("db-object-sql").value = "";
+        document.getElementById("db-object-modal").style.display = "flex";
+      });
+
+      document.getElementById("btn-save-db-object")?.addEventListener("click", () => {
+        const editId = document.getElementById("db-object-edit-id").value;
+        const type = document.getElementById("db-object-type").value;
+        const name = document.getElementById("db-object-name").value.trim();
+        const sql = document.getElementById("db-object-sql").value;
+
+        if (!name) {
+          alert("Nesne adı boş bırakılamaz!");
+          return;
+        }
+
+        if (editId) {
+          stateManager.updateDbObject(editId, { name, sql });
+          this.cc.showToast("✅ Nesne güncellendi!");
+        } else {
+          const id = "dbo_" + Math.random().toString(36).substr(2, 9);
+          const newObj = {
+            id: id,
+            name: name,
+            sql: sql,
+            dependencies: []
+          };
+          stateManager.addDbObject(type, newObj);
+          this.cc.showToast(`✅ "${name}" nesnesi tanımlandı!`);
+        }
+        document.getElementById("db-object-modal").style.display = "none";
+      });
+
+      document.getElementById("add-enum-btn")?.addEventListener("click", () => this.addNewEnum());
+      document.getElementById("add-folder-btn")?.addEventListener("click", () => this.addNewFolder());
+      document.getElementById("open-folder-manager-btn")?.addEventListener("click", () => {
+        document.getElementById("folder-manager-modal").style.display = "flex";
+        this.renderFolderManager();
+      });
+      document.getElementById("fm-add-folder-btn")?.addEventListener("click", () => {
+        this.addNewFolder();
+        this.renderFolderManager();
+      });
+      document.getElementById("fm-table-search")?.addEventListener("input", (e) => {
+        this.fmTableSearchQuery = e.target.value.toLowerCase();
+        this.renderFolderManagerTables();
+      });
 
     // Undo/Redo
     document.getElementById("btn-undo").addEventListener("click", () => stateManager.undo());
     document.getElementById("btn-redo").addEventListener("click", () => stateManager.redo());
+
+    document.getElementById("btn-arrange").addEventListener("click", () => this.autoArrange());
+
+    window.addEventListener("keydown", (e) => {
+      if (document.activeElement.tagName === "INPUT" || document.activeElement.tagName === "TEXTAREA" || document.activeElement.isContentEditable) {
+        return;
+      }
+      if (e.key.toLowerCase() === "l" && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        e.preventDefault();
+        this.autoArrange();
+      }
+    });
+
+    window.addEventListener('isolateFolder', (e) => {
+      if (e.detail !== this.isolatedFolderId) {
+        this.isolatedFolderId = e.detail;
+        this.updateSidebarLists(stateManager.state);
+      }
+    });
+
+    window.addEventListener('diagramLoaded', () => {
+      this.autoArrange();
+    });
 
     // SQL Modal
     const sqlModal = document.getElementById("sql-modal");
@@ -201,6 +292,23 @@ export class UIController {
       });
     }
 
+    const btnOfflineDiagram = document.getElementById("btn-offline-diagram");
+    if (btnOfflineDiagram) {
+      btnOfflineDiagram.addEventListener("click", () => {
+        const diagName = "Yeni Yerel Diyagram";
+        stateManager.loadDiagram({ name: diagName, tables: [], relationships: [], notes: [], areas: [], enums: [], views: [], procedures: [], functions: [], triggers: [] });
+        this.activeConnectionId = null;
+        this.activeDiagramId    = null;
+        this.updateConnectionStatus();
+        document.getElementById("splash-screen").style.display = "none";
+        document.getElementById("app").style.display = "flex";
+        const ni = document.getElementById("diagram-name");
+        if (ni) ni.value = diagName;
+        this.cc.fitToViewport();
+        this.cc.showToast(`Yerel "${diagName}" diyagramı oluşturuldu!`);
+      });
+    }
+
     document.getElementById("btn-import-diagram").addEventListener("click", () => {
       document.getElementById("file-import").click();
     });
@@ -236,8 +344,20 @@ export class UIController {
     });
 
     document.getElementById("close-inspector").addEventListener("click", () => {
-      this.cc.selectElement(null);
+      document.getElementById("right-panel").style.display = "none";
+      const openBtn = document.getElementById("open-inspector-btn");
+      if (openBtn && this.cc.selectedElement) {
+        openBtn.style.display = "flex";
+      }
     });
+
+    const openInspectorBtn = document.getElementById("open-inspector-btn");
+    if (openInspectorBtn) {
+      openInspectorBtn.addEventListener("click", () => {
+        document.getElementById("right-panel").style.display = "flex";
+        openInspectorBtn.style.display = "none";
+      });
+    }
 
     // Accordion toggles
     document.querySelectorAll(".accordion-trigger").forEach(trigger => {
@@ -289,9 +409,155 @@ export class UIController {
         this.updateSidebarLists(stateManager.state);
       });
     }
+
+    // Table search input handler
+    const tblSearchInp = document.getElementById("table-search-input");
+    if (tblSearchInp) {
+      tblSearchInp.addEventListener("input", (e) => {
+        this.tableSearchQuery = e.target.value.toLowerCase();
+        this.updateSidebarLists(stateManager.state);
+      });
+    }
     } catch(err) {
       console.error('[LiteDB] initEvents HATASI:', err);
     }
+  }
+
+  autoArrange() {
+    const state = stateManager.state;
+    // Arrange either only the isolated folder's tables, or all tables if none isolated
+    let tablesToArrange = state.tables;
+    if (this.isolatedFolderId) {
+      tablesToArrange = state.tables.filter(t => t.folder === this.isolatedFolderId);
+    }
+    
+    if (tablesToArrange.length === 0) return;
+
+    // Save history before modifying table positions for undo/redo
+    stateManager.saveHistory();
+
+    // Calculate exact height of each table based on field count
+    tablesToArrange.forEach(t => {
+      t.height = 42 + (t.fields.length * 26) + 10;
+    });
+
+    const tableIdsSet = new Set(tablesToArrange.map(t => t.id));
+
+    // 1. Calculate degree and build undirected graph for BFS distance
+    const degrees = {};
+    const graph = {};
+    tablesToArrange.forEach(t => {
+      degrees[t.id] = 0;
+      graph[t.id] = [];
+    });
+
+    state.relationships.forEach(r => {
+      if (tableIdsSet.has(r.startTableId) && tableIdsSet.has(r.endTableId)) {
+        degrees[r.startTableId]++;
+        degrees[r.endTableId]++;
+        graph[r.startTableId].push(r.endTableId);
+        graph[r.endTableId].push(r.startTableId);
+      }
+    });
+
+    // Find the center hub (highest degree table)
+    const sortedByDegree = [...tablesToArrange].sort((a, b) => degrees[b.id] - degrees[a.id]);
+    const centerTable = sortedByDegree[0];
+
+    // 2. BFS to find distance from center table (logical hierarchy placement)
+    const distances = {};
+    tablesToArrange.forEach(t => distances[t.id] = Infinity);
+    
+    if (centerTable) {
+      distances[centerTable.id] = 0;
+      const queue = [centerTable.id];
+      while (queue.length > 0) {
+        const u = queue.shift();
+        const distU = distances[u];
+        graph[u].forEach(v => {
+          if (distances[v] === Infinity) {
+            distances[v] = distU + 1;
+            queue.push(v);
+          }
+        });
+      }
+    }
+
+    // Sort tables by distance from center (primary) and degree (secondary)
+    const sorted = [...tablesToArrange].sort((a, b) => {
+      const distA = distances[a.id];
+      const distB = distances[b.id];
+      if (distA !== distB) {
+        return distA - distB;
+      }
+      return degrees[b.id] - degrees[a.id];
+    });
+
+    // 3. Dynamic concentric shell layout to prevent overlaps
+    const centerX = 1500;
+    const centerY = 1500;
+
+    let currentTableIndex = 0;
+    let prevR = 0;
+    let prevMaxHeight = 0;
+
+    // Center hub table placement
+    if (sorted[currentTableIndex]) {
+      const t = sorted[currentTableIndex];
+      t.x = centerX - 110;
+      t.y = centerY - Math.round(t.height / 2);
+      prevMaxHeight = t.height;
+      currentTableIndex++;
+    }
+
+    let shell = 1;
+    while (currentTableIndex < sorted.length) {
+      // Scale shell size: 8 in first shell, 16 in second, 24 in third, etc.
+      const tablesInShellCount = shell * 8;
+      const endIdx = Math.min(currentTableIndex + tablesInShellCount, sorted.length);
+      const shellTables = sorted.slice(currentTableIndex, endIdx);
+
+      if (shellTables.length === 0) break;
+
+      const maxTableHeightInShell = Math.max(...shellTables.map(t => t.height));
+
+      // Minimum safe separation distance
+      const horizontalGap = 90;
+      const verticalGap = 70;
+      const D = Math.max(220 + horizontalGap, maxTableHeightInShell + verticalGap);
+
+      // Constraint 1: Prevent overlaps within the same shell
+      let R_same_shell = 0;
+      if (shellTables.length > 1) {
+        const theta = (2 * Math.PI) / shellTables.length;
+        R_same_shell = D / (2 * Math.sin(theta / 2));
+      }
+
+      // Constraint 2: Prevent overlaps with the previous shell
+      const R_prev_shell = prevR + (prevMaxHeight + maxTableHeightInShell) / 2 + 110;
+
+      // Select the maximum radius that satisfies both constraints
+      const shellRadius = Math.max(R_same_shell, R_prev_shell);
+
+      // Distribute tables at equal angles along the circle
+      shellTables.forEach((t, i) => {
+        const angle = (i / shellTables.length) * 2 * Math.PI;
+        t.x = Math.round(centerX + shellRadius * Math.cos(angle) - 110);
+        t.y = Math.round(centerY + shellRadius * Math.sin(angle) - (t.height / 2));
+      });
+
+      // Update state for next shell
+      prevR = shellRadius;
+      prevMaxHeight = maxTableHeightInShell;
+
+      currentTableIndex = endIdx;
+      shell++;
+    }
+
+    // Notify state manager (this triggers renderer.render and sidebar update) and auto fit view
+    stateManager.notify();
+    this.cc.fitToViewport();
+    this.cc.showToast("Gelişmiş yıldız yerleşimi uygulandı!");
   }
 
   addNewTable() {
@@ -346,6 +612,149 @@ export class UIController {
       values: ["active", "inactive", "pending"]
     });
     this.cc.selectElement("enum", id);
+  }
+
+  addNewFolder() {
+    const id = "folder_" + Math.random().toString(36).substr(2, 9);
+    stateManager.addFolder({
+      id,
+      name: "Yeni Klasör",
+      color: "#ec4899"
+    });
+    this.cc.selectElement("folder", id);
+  }
+
+  renderFolderManager() {
+    const foldersContainer = document.getElementById("fm-folders-container");
+    if (!foldersContainer) return;
+    
+    foldersContainer.innerHTML = "";
+    
+    // Klasör kartlarını oluştur
+    (stateManager.state.folders || []).forEach(folder => {
+      const card = document.createElement("div");
+      card.className = "fm-folder-card";
+      card.style.cssText = `
+        background: var(--surface2);
+        border: 2px solid var(--border);
+        border-radius: 8px;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        transition: all 0.2s;
+        min-height: 150px;
+      `;
+      card.innerHTML = `
+        <div style="display:flex; align-items:center; gap:8px; border-bottom: 1px solid var(--border); padding-bottom:8px;">
+          <div style="width:12px; height:12px; border-radius:50%; background:${folder.color || 'var(--primary)'};"></div>
+          <div style="font-weight:700; font-size:0.9rem;">${folder.name}</div>
+        </div>
+        <div class="fm-folder-items" style="flex:1; display:flex; flex-direction:column; gap:4px; overflow-y:auto; max-height: 200px;"></div>
+      `;
+      
+      const itemsContainer = card.querySelector('.fm-folder-items');
+      
+      // Bu klasöre ait tabloları listele
+      stateManager.state.tables.filter(t => t.folder === folder.id).forEach(table => {
+        const item = document.createElement("div");
+        item.style.cssText = `
+          font-size: 0.8rem;
+          padding: 4px 8px;
+          background: var(--surface);
+          border: 1px solid var(--border);
+          border-radius: 4px;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        `;
+        item.innerHTML = `<span>${table.name}</span> <span style="cursor:pointer; color:var(--danger);" class="fm-remove-tbl" title="Klasörden Çıkar">✕</span>`;
+        item.querySelector('.fm-remove-tbl').addEventListener('click', (e) => {
+          e.stopPropagation();
+          stateManager.updateTable(table.id, { folder: null, color: '#3b82f6' });
+          this.renderFolderManager();
+        });
+        itemsContainer.appendChild(item);
+      });
+
+      // Sürükle-bırak olayları
+      card.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        card.style.borderColor = folder.color || 'var(--primary)';
+        card.style.boxShadow = `0 0 10px ${folder.color}40`;
+      });
+      card.addEventListener("dragleave", () => {
+        card.style.borderColor = "var(--border)";
+        card.style.boxShadow = "none";
+      });
+      card.addEventListener("drop", (e) => {
+        e.preventDefault();
+        card.style.borderColor = "var(--border)";
+        card.style.boxShadow = "none";
+        
+        const tableId = e.dataTransfer.getData("text/plain");
+        if (tableId) {
+          const table = stateManager.state.tables.find(t => t.id === tableId);
+          if (table && table.folder !== folder.id) {
+            stateManager.updateTable(tableId, { folder: folder.id, color: folder.color || '#3b82f6' });
+            this.renderFolderManager();
+          }
+        }
+      });
+      
+      foldersContainer.appendChild(card);
+    });
+
+    this.renderFolderManagerTables();
+  }
+
+  renderFolderManagerTables() {
+    const tablesContainer = document.getElementById("fm-tables-container");
+    const countSpan = document.getElementById("fm-table-count");
+    if (!tablesContainer) return;
+    
+    tablesContainer.innerHTML = "";
+    
+    let tables = stateManager.state.tables;
+    if (this.fmTableSearchQuery) {
+      tables = tables.filter(t => t.name.toLowerCase().includes(this.fmTableSearchQuery));
+    }
+    
+    countSpan.innerText = `${tables.length} tablo`;
+
+    tables.forEach(table => {
+      const folder = (stateManager.state.folders || []).find(f => f.id === table.folder);
+      
+      const item = document.createElement("div");
+      item.setAttribute("draggable", "true");
+      item.style.cssText = `
+        padding: 8px 12px;
+        background: var(--bg2);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        cursor: grab;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 0.85rem;
+        transition: all 0.2s;
+        border-left: 4px solid ${folder ? folder.color : '#3b82f6'};
+      `;
+      item.innerHTML = `
+        <div style="font-weight:600;">${table.name}</div>
+        <div style="font-size:0.7rem; opacity:0.6;">${folder ? folder.name : 'Atanmamış'}</div>
+      `;
+      
+      item.addEventListener("dragstart", (e) => {
+        e.dataTransfer.setData("text/plain", table.id);
+        item.style.opacity = "0.5";
+      });
+      item.addEventListener("dragend", () => {
+        item.style.opacity = "1";
+      });
+      
+      tablesContainer.appendChild(item);
+    });
   }
 
   updateSQLView() {
@@ -409,39 +818,145 @@ export class UIController {
     // Tables Tab
     const tablesList = document.getElementById("tables-list");
     tablesList.innerHTML = "";
-    document.getElementById("table-count").innerText = `${state.tables.length} tablo`;
-    state.tables.forEach(t => {
-      const item = document.createElement("div");
-      item.className = "sidebar-item";
-      if (this.cc.selectedElement && this.cc.selectedElement.type === "table" && this.cc.selectedElement.id === t.id) {
-        item.classList.add("selected");
+
+    // "Tüm Tabloları Göster" navigation option at the top of the sidebar list
+    const allTablesBtn = document.createElement("div");
+    allTablesBtn.style.cssText = `
+      padding: 8px 12px;
+      margin: 4px 6px 12px 6px;
+      background: ${this.isolatedFolderId === null ? 'var(--primary)' : 'var(--surface2)'};
+      color: ${this.isolatedFolderId === null ? '#fff' : 'var(--text1)'};
+      font-size: 0.8rem;
+      font-weight: 700;
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.2s;
+    `;
+    allTablesBtn.innerHTML = `
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="opacity:0.85;">
+        <rect x="3" y="3" width="7" height="9" rx="1"></rect>
+        <rect x="14" y="3" width="7" height="5" rx="1"></rect>
+        <rect x="14" y="12" width="7" height="9" rx="1"></rect>
+        <rect x="3" y="16" width="7" height="5" rx="1"></rect>
+      </svg>
+      Tüm Tabloları Göster
+    `;
+    allTablesBtn.addEventListener('click', () => {
+      this.isolatedFolderId = null;
+      window.dispatchEvent(new CustomEvent('isolateFolder', { detail: null }));
+      this.updateSidebarLists(state);
+      this.autoArrange();
+    });
+    tablesList.appendChild(allTablesBtn);
+    
+    let filteredTables = state.tables;
+    if (this.tableSearchQuery) {
+      filteredTables = state.tables.filter(t => t.name.toLowerCase().includes(this.tableSearchQuery));
+    }
+    
+    document.getElementById("table-count").innerText = `${filteredTables.length} tablo`;
+
+    const foldersMap = {};
+    (state.folders || []).forEach(f => foldersMap[f.id] = { folder: f, tables: [] });
+    foldersMap["unassigned"] = { folder: { id: "unassigned", name: "Atanmamış", color: "#64748b" }, tables: [] };
+
+    filteredTables.forEach(t => {
+      if (t.folder && foldersMap[t.folder]) {
+        foldersMap[t.folder].tables.push(t);
+      } else {
+        foldersMap["unassigned"].tables.push(t);
       }
-      item.innerHTML = `
-        <div class="sidebar-item-label">
-          <span class="sidebar-item-dot" style="background:${t.color || "var(--primary)"}"></span>
-          <span class="sidebar-item-name">${t.name}</span>
-        </div>
-        <div class="sidebar-item-actions">
-          <button class="sidebar-item-btn info" data-id="${t.id}" data-action="show-related" title="İlişkili Objeleri Göster">👁</button>
-          <button class="sidebar-item-btn danger" data-id="${t.id}" title="Tabloyu Sil">✕</button>
-        </div>
+    });
+
+    Object.values(foldersMap).forEach(group => {
+      if (group.tables.length === 0) return;
+
+      if (!this.collapsedFolders) this.collapsedFolders = new Set();
+      const isCollapsed = this.collapsedFolders.has(group.folder.id);
+
+      const folderHeader = document.createElement("div");
+      folderHeader.style.cssText = `
+        padding: 8px 12px;
+        background: var(--surface2);
+        font-size: 0.8rem;
+        font-weight: 700;
+        color: var(--text2);
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        cursor: pointer;
       `;
-      item.addEventListener("click", () => this.cc.selectElement("table", t.id));
-      item.querySelectorAll(".sidebar-item-btn").forEach(btn => {
-        btn.addEventListener("click", (e) => {
-          e.stopPropagation();
-          const action = btn.dataset.action;
-          if (action === "show-related") {
-            this.showRelatedObjects(t.id);
-          } else {
-            if (confirm("Bu tabloyu silmek istediğinize emin misiniz?")) {
-              stateManager.deleteTable(t.id);
-              this.cc.selectElement(null);
-            }
-          }
-        });
+      folderHeader.innerHTML = `
+        <span class="folder-caret" style="font-size:10px; width:12px; display:inline-block; text-align:center; transition: transform 0.2s; transform: ${isCollapsed ? 'rotate(-90deg)' : 'rotate(0)'};">▼</span>
+        <span style="width:10px; height:10px; border-radius:50%; background:${group.folder.color}; display:inline-block; flex-shrink:0;"></span>
+        <span class="folder-title" style="flex:1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="Klasörü Filtrele">${group.folder.name}</span>
+        <span style="opacity:0.5;font-weight:400;margin-left:auto;">(${group.tables.length})</span>
+      `;
+      
+      folderHeader.querySelector('.folder-caret').addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (isCollapsed) this.collapsedFolders.delete(group.folder.id);
+        else this.collapsedFolders.add(group.folder.id);
+        this.updateSidebarLists(stateManager.state);
       });
-      tablesList.appendChild(item);
+
+      folderHeader.querySelector('.folder-title').addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.isolatedFolderId = this.isolatedFolderId === group.folder.id ? null : group.folder.id;
+        window.dispatchEvent(new CustomEvent('isolateFolder', { detail: this.isolatedFolderId }));
+        this.updateSidebarLists(stateManager.state);
+        this.autoArrange();
+      });
+
+      if (this.isolatedFolderId === group.folder.id) {
+        folderHeader.style.background = 'var(--primary)';
+        folderHeader.style.color = '#fff';
+      }
+
+      tablesList.appendChild(folderHeader);
+
+      if (isCollapsed) return;
+
+      group.tables.forEach(t => {
+        const item = document.createElement("div");
+        item.className = "sidebar-item";
+        item.style.paddingLeft = "24px"; // Ağaç görünümü için girinti
+        if (this.cc.selectedElement && this.cc.selectedElement.type === "table" && this.cc.selectedElement.id === t.id) {
+          item.classList.add("selected");
+        }
+        item.innerHTML = `
+          <div class="sidebar-item-label">
+            <span class="sidebar-item-name">${t.name}</span>
+          </div>
+          <div class="sidebar-item-actions">
+            <button class="sidebar-item-btn info" data-id="${t.id}" data-action="show-related" title="İlişkili Objeleri Göster">👁</button>
+            <button class="sidebar-item-btn danger" data-id="${t.id}" title="Tabloyu Sil">✕</button>
+          </div>
+        `;
+        item.addEventListener("click", () => this.cc.selectElement("table", t.id));
+        item.querySelectorAll(".sidebar-item-btn").forEach(btn => {
+          btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const action = btn.dataset.action;
+            if (action === "show-related") {
+              this.showRelatedObjects(t.id);
+            } else {
+              if (confirm("Bu tabloyu silmek istediğinize emin misiniz?")) {
+                stateManager.deleteTable(t.id);
+                this.cc.selectElement(null);
+              }
+            }
+          });
+        });
+        tablesList.appendChild(item);
+      });
     });
 
     // Relationships Tab
@@ -520,6 +1035,41 @@ export class UIController {
       enumsList.appendChild(item);
     });
 
+    // Folders Tab
+    const foldersList = document.getElementById("folders-list");
+    if (foldersList) {
+      foldersList.innerHTML = "";
+      document.getElementById("folder-count").innerText = `${state.folders ? state.folders.length : 0} klasör`;
+      (state.folders || []).forEach(f => {
+        const item = document.createElement("div");
+        item.className = "sidebar-item";
+        if (this.cc.selectedElement && this.cc.selectedElement.type === "folder" && this.cc.selectedElement.id === f.id) {
+          item.classList.add("selected");
+        }
+        item.innerHTML = `
+          <div class="sidebar-item-label">
+            <span class="sidebar-item-dot" style="background:${f.color || 'var(--primary)'}"></span>
+            <span class="sidebar-item-name" title="${f.name}">${f.name}</span>
+          </div>
+          <div class="sidebar-item-actions">
+            <button class="sidebar-item-btn danger" title="Klasörü Sil">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </div>
+        `;
+        item.addEventListener("click", () => this.cc.selectElement("folder", f.id));
+        item.querySelector(".sidebar-item-btn").addEventListener("click", (e) => {
+          e.stopPropagation();
+          stateManager.deleteFolder(f.id);
+          this.cc.selectElement(null);
+        });
+        foldersList.appendChild(item);
+      });
+    }
+
     // Objeler Accordion Lists (Views, Procedures, Functions, Triggers)
     const viewsList = document.getElementById("views-list");
     if (viewsList) {
@@ -541,8 +1091,18 @@ export class UIController {
             <span class="sidebar-item-dot" style="background:var(--accent)"></span>
             <span class="sidebar-item-name" title="${v.name}">${v.name}</span>
           </div>
+          <div class="sidebar-item-actions">
+            <button class="sidebar-item-btn danger" title="Sil">✕</button>
+          </div>
         `;
         item.addEventListener("click", () => this.cc.selectElement("db_object", v.id));
+        item.querySelector(".sidebar-item-btn").addEventListener("click", (e) => {
+          e.stopPropagation();
+          if (confirm(`"${v.name}" objesini silmek istediğinize emin misiniz?`)) {
+            stateManager.deleteDbObject("view", v.id);
+            this.cc.selectElement(null);
+          }
+        });
         viewsList.appendChild(item);
       });
     }
@@ -567,8 +1127,18 @@ export class UIController {
             <span class="sidebar-item-dot" style="background:var(--warning)"></span>
             <span class="sidebar-item-name" title="${p.name}">${p.name}</span>
           </div>
+          <div class="sidebar-item-actions">
+            <button class="sidebar-item-btn danger" title="Sil">✕</button>
+          </div>
         `;
         item.addEventListener("click", () => this.cc.selectElement("db_object", p.id));
+        item.querySelector(".sidebar-item-btn").addEventListener("click", (e) => {
+          e.stopPropagation();
+          if (confirm(`"${p.name}" objesini silmek istediğinize emin misiniz?`)) {
+            stateManager.deleteDbObject("procedure", p.id);
+            this.cc.selectElement(null);
+          }
+        });
         procsList.appendChild(item);
       });
     }
@@ -593,8 +1163,18 @@ export class UIController {
             <span class="sidebar-item-dot" style="background:var(--success)"></span>
             <span class="sidebar-item-name" title="${f.name}">${f.name}</span>
           </div>
+          <div class="sidebar-item-actions">
+            <button class="sidebar-item-btn danger" title="Sil">✕</button>
+          </div>
         `;
         item.addEventListener("click", () => this.cc.selectElement("db_object", f.id));
+        item.querySelector(".sidebar-item-btn").addEventListener("click", (e) => {
+          e.stopPropagation();
+          if (confirm(`"${f.name}" objesini silmek istediğinize emin misiniz?`)) {
+            stateManager.deleteDbObject("function", f.id);
+            this.cc.selectElement(null);
+          }
+        });
         funcsList.appendChild(item);
       });
     }
@@ -619,8 +1199,18 @@ export class UIController {
             <span class="sidebar-item-dot" style="background:var(--danger)"></span>
             <span class="sidebar-item-name" title="${t.name}">${t.name}</span>
           </div>
+          <div class="sidebar-item-actions">
+            <button class="sidebar-item-btn danger" title="Sil">✕</button>
+          </div>
         `;
         item.addEventListener("click", () => this.cc.selectElement("db_object", t.id));
+        item.querySelector(".sidebar-item-btn").addEventListener("click", (e) => {
+          e.stopPropagation();
+          if (confirm(`"${t.name}" objesini silmek istediğinize emin misiniz?`)) {
+            stateManager.deleteDbObject("trigger", t.id);
+            this.cc.selectElement(null);
+          }
+        });
         triggersList.appendChild(item);
       });
     }
@@ -629,14 +1219,17 @@ export class UIController {
   renderInspector(selected) {
     const rightPanel = document.getElementById("right-panel");
     const container = document.getElementById("inspector-content");
+    const openBtn = document.getElementById("open-inspector-btn");
     container.innerHTML = "";
 
     if (!selected) {
       rightPanel.style.display = "none";
+      if (openBtn) openBtn.style.display = "none";
       return;
     }
 
     rightPanel.style.display = "flex";
+    if (openBtn) openBtn.style.display = "none";
 
     if (selected.type === "table") {
       document.getElementById("inspector-title").innerText = "Tablo Özellikleri";
@@ -653,8 +1246,8 @@ export class UIController {
       let fieldsHtml = table.fields.map((f, i) => `
         <div class="field-row" data-index="${i}">
           <div class="field-row-top">
-            <input class="inspector-input field-name" value="${f.name}" placeholder="Kolon Adı" />
-            <select class="inspector-select field-type" style="width:90px;flex-shrink:0;">
+            <input class="inspector-input field-name" style="font-weight:600; font-size:0.95rem !important;" value="${f.name}" placeholder="Kolon Adı" />
+            <select class="inspector-select field-type" style="width:100px;flex-shrink:0;font-weight:500;">
               <option value="INT" ${f.type === "INT" ? "selected" : ""}>INT</option>
               <option value="INTEGER" ${f.type === "INTEGER" ? "selected" : ""}>INTEGER</option>
               <option value="VARCHAR(255)" ${f.type === "VARCHAR(255)" ? "selected" : ""}>VARCHAR(255)</option>
@@ -664,15 +1257,27 @@ export class UIController {
               <option value="DATE" ${f.type === "DATE" ? "selected" : ""}>DATE</option>
               <option value="TIMESTAMP" ${f.type === "TIMESTAMP" ? "selected" : ""}>TIMESTAMP</option>
             </select>
-            <button class="field-del-btn" data-index="${i}">✕</button>
+            <button class="field-del-btn" data-index="${i}" title="Kolonu Sil">✕</button>
           </div>
-          <div class="field-row-flags">
-            <label class="flag-check"><input type="checkbox" class="field-pk" ${f.primary ? "checked" : ""}> PK</label>
-            <label class="flag-check"><input type="checkbox" class="field-nn" ${f.notNull ? "checked" : ""}> NN</label>
-            <label class="flag-check"><input type="checkbox" class="field-uq" ${f.unique ? "checked" : ""}> UQ</label>
-            <label class="flag-check"><input type="checkbox" class="field-ai" ${f.increment ? "checked" : ""}> AI</label>
+          <div class="field-row-flags" style="margin-top:2px;">
+            <label class="flag-check" title="Primary Key">
+              <input type="checkbox" class="field-pk" ${f.primary ? "checked" : ""}>
+              <span class="flag-label">PK</span>
+            </label>
+            <label class="flag-check" title="Not Null">
+              <input type="checkbox" class="field-nn" ${f.notNull ? "checked" : ""}>
+              <span class="flag-label">NN</span>
+            </label>
+            <label class="flag-check" title="Unique">
+              <input type="checkbox" class="field-uq" ${f.unique ? "checked" : ""}>
+              <span class="flag-label">UQ</span>
+            </label>
+            <label class="flag-check" title="Auto Increment">
+              <input type="checkbox" class="field-ai" ${f.increment ? "checked" : ""}>
+              <span class="flag-label">AI</span>
+            </label>
           </div>
-          <input class="inspector-input field-default" value="${f.default || ""}" placeholder="Varsayılan Değer" />
+          <input class="inspector-input field-default" style="font-family:var(--mono);font-size:0.8rem !important;margin-top:2px;" value="${f.default || ""}" placeholder="Varsayılan Değer (Örn: NULL, 0)" />
         </div>
       `).join("");
 
@@ -682,7 +1287,19 @@ export class UIController {
           <input id="insp-table-name" class="inspector-input" value="${table.name}" />
         </div>
         <div class="inspector-section">
-          <div class="inspector-label">Tablo Rengi</div>
+          <div class="inspector-label" style="display:flex; justify-content:space-between; align-items:center;">
+            Klasör (Mantıksal Alan)
+            <span style="font-size:10px; opacity:0.6; font-weight:normal;">Oto Renk</span>
+          </div>
+          <select id="insp-table-folder" class="inspector-select" style="width:100%; margin-bottom:8px;">
+            <option value="">-- Klasör Seçin --</option>
+            ${(stateManager.state.folders || []).map(f => `
+              <option value="${f.id}" ${table.folder === f.id ? "selected" : ""}>${f.name}</option>
+            `).join("")}
+          </select>
+        </div>
+        <div class="inspector-section">
+          <div class="inspector-label">Özel Tablo Rengi</div>
           <div class="inspector-color-row">${colorSwatches}</div>
         </div>
         <div class="inspector-section">
@@ -690,6 +1307,7 @@ export class UIController {
           <div class="fields-list">${fieldsHtml}</div>
           <button id="insp-add-field" class="add-field-btn">+ Kolon Ekle</button>
         </div>
+        ${this.buildTableLineageHtml(table)}
         <div style="margin-top:24px;">
           <button id="insp-delete-table" class="btn-danger" style="width:100%;justify-content:center;">Tabloyu Sil</button>
         </div>
@@ -698,6 +1316,14 @@ export class UIController {
       // Handlers
       document.getElementById("insp-table-name").addEventListener("input", (e) => {
         stateManager.updateTable(table.id, { name: e.target.value });
+      });
+
+      document.getElementById("insp-table-folder").addEventListener("change", (e) => {
+        const folderId = e.target.value;
+        const folder = (stateManager.state.folders || []).find(f => f.id === folderId);
+        const newColor = folder ? folder.color : '#3b82f6';
+        stateManager.updateTable(table.id, { folder: folderId, color: newColor });
+        this.renderInspector(selected);
       });
 
       container.querySelectorAll(".color-swatch").forEach(swatch => {
@@ -727,6 +1353,13 @@ export class UIController {
           this.cc.selectElement(null);
         }
       });
+
+      const showLineageBtn = document.getElementById("insp-show-lineage");
+      if (showLineageBtn) {
+        showLineageBtn.addEventListener("click", () => {
+          this.showRelatedObjects(table.id);
+        });
+      }
 
       container.querySelectorAll(".field-row").forEach(row => {
         const index = parseInt(row.getAttribute("data-index"));
@@ -969,6 +1602,54 @@ export class UIController {
         stateManager.deleteEnum(en.id);
         this.cc.selectElement(null);
       });
+    } else if (selected.type === "folder") {
+      document.getElementById("inspector-title").innerText = "Klasör Özellikleri";
+      const folder = (stateManager.state.folders || []).find(f => f.id === selected.id);
+      if (!folder) return;
+
+      const colors = ["#a855f7", "#f43f5e", "#10b981", "#3b82f6", "#ef4444", "#f59e0b", "#ec4899", "#8b5cf6", "#6366f1"];
+      let colorSwatches = colors.map(c => `
+        <span class="color-swatch ${folder.color === c ? 'active' : ''}" style="background:${c}" data-color="${c}"></span>
+      `).join("");
+
+      container.innerHTML = `
+        <div class="inspector-section">
+          <div class="inspector-label">Klasör Adı</div>
+          <input id="insp-folder-name" class="inspector-input" value="${folder.name}" />
+        </div>
+        <div class="inspector-section">
+          <div class="inspector-label">Klasör Rengi</div>
+          <div class="inspector-color-row">${colorSwatches}</div>
+          <div style="font-size:11px; opacity:0.6; margin-top:6px;">
+            Not: Klasör rengini değiştirdiğinizde, bu klasöre ait olan tüm tabloların renkleri otomatik güncellenecektir.
+          </div>
+        </div>
+        <div style="margin-top:24px;">
+          <button id="insp-delete-folder" class="btn-danger" style="width:100%;justify-content:center;">Klasörü Sil</button>
+        </div>
+      `;
+
+      document.getElementById("insp-folder-name").addEventListener("input", (e) => {
+        stateManager.updateFolder(folder.id, { name: e.target.value });
+      });
+
+      container.querySelectorAll(".color-swatch").forEach(swatch => {
+        swatch.addEventListener("click", () => {
+          const newColor = swatch.getAttribute("data-color");
+          stateManager.updateFolder(folder.id, { color: newColor });
+          
+          stateManager.state.tables.filter(t => t.folder === folder.id).forEach(t => {
+            stateManager.updateTable(t.id, { color: newColor });
+          });
+          
+          this.renderInspector(selected);
+        });
+      });
+
+      document.getElementById("insp-delete-folder").addEventListener("click", () => {
+        stateManager.deleteFolder(folder.id);
+        this.cc.selectElement(null);
+      });
     } else if (selected && selected.type === "db_object") {
       let obj = stateManager.state.views.find(v => v.id === selected.id) ||
                 stateManager.state.procedures.find(p => p.id === selected.id) ||
@@ -983,7 +1664,9 @@ export class UIController {
         return;
       }
       
-      document.getElementById("inspector-title").innerText = `${obj.name}`;
+      document.getElementById("inspector-title").innerHTML = `
+        <input id="insp-db-object-name" class="diagram-name-input" value="${obj.name}" style="font-size: 1.15rem; font-weight: 700; width: 100%; border: none; background: transparent; outline: none; color: var(--text);" />
+      `;
 
       const tabsHtml = `
         <div class="inspector-tabs">
@@ -1000,7 +1683,7 @@ export class UIController {
         let totalReads = 0;
         let totalWrites = 0;
         
-        const tablesListHtml = obj.dependencies.map(depId => {
+        const tablesListHtml = (obj.dependencies || []).map(depId => {
           const tbl = stateManager.state.tables.find(t => t.id === depId);
           if (!tbl) return '';
 
@@ -1345,6 +2028,17 @@ export class UIController {
         });
       });
 
+      const nameInput = document.getElementById("insp-db-object-name");
+      if (nameInput) {
+        nameInput.addEventListener("change", (e) => {
+          const newName = e.target.value.trim();
+          if (newName) {
+            stateManager.updateDbObject(obj.id, { name: newName });
+            this.cc.showToast("✅ Nesne adı güncellendi!");
+          }
+        });
+      }
+
       const reSimulateBtn = document.getElementById("btn-re-simulate");
       if (reSimulateBtn) {
         reSimulateBtn.addEventListener("click", () => {
@@ -1592,6 +2286,109 @@ export class UIController {
     return html;
   }
 
+  parseDDLToTable(sql) {
+    // Basic cleanup
+    sql = sql.replace(/\/\*[\s\S]*?\*\//g, "").replace(/--.*$/gm, ""); // remove comments
+    
+    // Find table name
+    const tableMatch = sql.match(/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-zA-Z0-9_\[\]`"]+)/i);
+    if (!tableMatch) {
+      throw new Error("Geçerli bir CREATE TABLE ifadesi bulunamadı.");
+    }
+    
+    let tableName = tableMatch[1].replace(/[\[\]`"]/g, "");
+    
+    // Extract column definitions inside first set of parentheses
+    const startParen = sql.indexOf("(");
+    const endParen = sql.lastIndexOf(")");
+    if (startParen === -1 || endParen === -1) {
+      throw new Error("Tablo sütun tanımları bulunamadı (parantez eksik).");
+    }
+    
+    const columnsText = sql.substring(startParen + 1, endParen);
+    
+    // Split by commas, but ignore commas inside parentheses e.g. DECIMAL(10, 2)
+    const columnLines = [];
+    let currentLine = "";
+    let parenDepth = 0;
+    
+    for (let i = 0; i < columnsText.length; i++) {
+      const char = columnsText[i];
+      if (char === "(") parenDepth++;
+      if (char === ")") parenDepth--;
+      
+      if (char === "," && parenDepth === 0) {
+        columnLines.push(currentLine.trim());
+        currentLine = "";
+      } else {
+        currentLine += char;
+      }
+    }
+    if (currentLine.trim()) {
+      columnLines.push(currentLine.trim());
+    }
+    
+    const fields = [];
+    
+    for (let line of columnLines) {
+      // Skip table-level constraints like PRIMARY KEY (id) or FOREIGN KEY ...
+      if (/^(?:CONSTRAINT|PRIMARY\s+KEY|FOREIGN\s+KEY|UNIQUE|INDEX|KEY)\b/i.test(line)) {
+        continue;
+      }
+      
+      // Clean brackets and quotes from column definition
+      line = line.replace(/[\[\]`"]/g, "");
+      const tokens = line.split(/\s+/).filter(t => t.trim().length > 0);
+      if (tokens.length < 2) continue;
+      
+      const colName = tokens[0];
+      let colType = tokens[1];
+      
+      // Re-assemble type if it contains parentheses but was split
+      let typeIndex = 1;
+      if (colType.includes("(")) {
+        let openCount = (colType.match(/\(/g) || []).length;
+        let closeCount = (colType.match(/\)/g) || []).length;
+        while (openCount > closeCount && typeIndex + 1 < tokens.length) {
+          typeIndex++;
+          colType += " " + tokens[typeIndex];
+          openCount = (colType.match(/\(/g) || []).length;
+          closeCount = (colType.match(/\)/g) || []).length;
+        }
+      }
+      
+      const rest = tokens.slice(typeIndex + 1).join(" ").toUpperCase();
+      
+      const primary = rest.includes("PRIMARY KEY");
+      const notNull = rest.includes("NOT NULL");
+      const unique = rest.includes("UNIQUE");
+      const increment = rest.includes("IDENTITY") || rest.includes("AUTO_INCREMENT") || rest.includes("AUTOINCREMENT");
+      
+      fields.push({
+        id: "f_" + Math.random().toString(36).substr(2, 9),
+        name: colName,
+        type: colType,
+        primary,
+        notNull,
+        unique,
+        increment
+      });
+    }
+    
+    if (fields.length === 0) {
+      throw new Error("Tabloda geçerli sütun tanımı bulunamadı.");
+    }
+    
+    return {
+      id: "tbl_" + Math.random().toString(36).substr(2, 9),
+      name: tableName,
+      x: Math.round(-this.cc.panX / this.cc.zoom + 150),
+      y: Math.round(-this.cc.panY / this.cc.zoom + 150),
+      color: "#6366f1",
+      fields: fields
+    };
+  }
+
   // ── Connection status in header ─────────────────────────────────────────────
   updateConnectionStatus() {
     const el = document.getElementById("db-status-indicator");
@@ -1769,6 +2566,23 @@ export class UIController {
     const connCancelBtn = document.getElementById("conn-cancel-btn");
     if (connCancelBtn) connCancelBtn.onclick = () => { modal.style.display = "none"; };
 
+    const connOfflineBtn = document.getElementById("conn-offline-btn");
+    if (connOfflineBtn) connOfflineBtn.onclick = () => {
+      const diagName = document.getElementById("conn-diag-name").value.trim() || "Yeni Yerel Diyagram";
+      modal.style.display = "none";
+      stateManager.loadDiagram({ name: diagName, tables: [], relationships: [], notes: [], areas: [], enums: [], views: [], procedures: [], functions: [], triggers: [] });
+      this.activeConnectionId = null;
+      this.activeDiagramId    = null;
+      this.updateConnectionStatus();
+
+      document.getElementById("splash-screen").style.display = "none";
+      document.getElementById("app").style.display = "flex";
+      const ni = document.getElementById("diagram-name");
+      if (ni) ni.value = diagName;
+      this.cc.fitToViewport();
+      this.cc.showToast(`Yerel "${diagName}" diyagramı oluşturuldu!`);
+    };
+
     const connCreateBtn = document.getElementById("conn-create-btn");
     if (connCreateBtn) connCreateBtn.onclick = async () => {
       const diagName = document.getElementById("conn-diag-name").value.trim() || "Yeni Diyagram";
@@ -1824,5 +2638,85 @@ export class UIController {
         this.cc.showToast(`"${diagName}" diyagramı oluşturuldu!`);
       }
     };
+  }
+
+  buildTableLineageHtml(table) {
+    const fkRels = stateManager.state.relationships.filter(r => r.startTableId === table.id || r.endTableId === table.id);
+    const sqlDeps = [];
+    const allObjects = [
+      ...(stateManager.state.views || []).map(o => ({ ...o, type: 'view' })),
+      ...(stateManager.state.procedures || []).map(o => ({ ...o, type: 'procedure' })),
+      ...(stateManager.state.functions || []).map(o => ({ ...o, type: 'function' })),
+      ...(stateManager.state.triggers || []).map(o => ({ ...o, type: 'trigger' }))
+    ];
+    
+    allObjects.forEach(obj => {
+      const deps = obj.dependencies || [];
+      const nameMatch = obj.sql && obj.sql.toLowerCase().includes(table.name.toLowerCase());
+      if (deps.includes(table.id) || deps.includes(table.name) || nameMatch) {
+        sqlDeps.push(obj);
+      }
+    });
+
+    if (fkRels.length === 0 && sqlDeps.length === 0) return "";
+
+    let relHtml = fkRels.map(r => {
+      const isStart = r.startTableId === table.id;
+      const otherId = isStart ? r.endTableId : r.startTableId;
+      const otherT = stateManager.state.tables.find(t => t.id === otherId);
+      if (!otherT) return '';
+      const myF = table.fields.find(f => f.id === (isStart ? r.startFieldId : r.endFieldId));
+      const otherF = otherT.fields.find(f => f.id === (isStart ? r.endFieldId : r.startFieldId));
+      return `
+        <div style="font-size:0.75rem; background:var(--surface2); padding:10px; border-radius:6px; margin-bottom:6px; border:1px solid var(--border); display:flex; flex-direction:column; gap:8px;">
+          <div style="color:var(--text2);font-weight:600;font-size:0.7rem;text-transform:uppercase;">Yabancı Anahtar (FK)</div>
+          <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+            <span style="background:var(--primary); color:#fff; padding:2px 6px; border-radius:4px; font-size:0.7rem; font-weight:600; box-shadow:0 2px 4px rgba(0,0,0,0.1);">${myF?.name}</span>
+            <span style="color:var(--text2);font-size:10px;">➔</span>
+            <span style="background:var(--surface); border:1px solid var(--border); color:var(--text); padding:2px 6px; border-radius:4px; font-size:0.7rem; font-weight:500;">${otherT.name}.${otherF?.name}</span>
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    let sqlHtml = sqlDeps.map(o => {
+      const color = { view: "var(--accent)", procedure: "var(--warning)", function: "var(--success)", trigger: "var(--danger)" }[o.type] || "var(--primary)";
+      
+      let accessedHtml = "";
+      try {
+        const accessedFields = getAccessedFields(table.name, table.fields, o.sql || "");
+        if (accessedFields && accessedFields.length > 0) {
+           const tags = accessedFields.map(f => `<span style="background:var(--surface); border:1px solid var(--border); color:var(--text2); padding:3px 8px; border-radius:12px; font-size:0.65rem; font-weight:500;">${f.name}</span>`).join("");
+           accessedHtml = `
+             <div style="margin-top:6px; font-size:0.65rem; color:var(--text2); font-weight:600;">Erişilen Kolonlar:</div>
+             <div style="display:flex; flex-wrap:wrap; gap:4px; margin-top:4px;">${tags}</div>
+           `;
+        }
+      } catch (e) {}
+
+      return `
+        <div style="font-size:0.75rem; background:var(--surface2); padding:10px; border-radius:6px; margin-bottom:6px; border:1px solid var(--border); display:flex; flex-direction:column;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div style="display:flex; align-items:center; gap:6px;">
+              <span style="width:6px; height:6px; border-radius:50%; background:${color};"></span>
+              <span style="font-weight:600;color:var(--text);">${o.name}</span>
+            </div>
+            <span style="color:${color}; background:${color}15; border:1px solid ${color}40; padding:2px 6px; border-radius:4px; font-weight:bold; font-size:0.6rem; text-transform:uppercase;">${o.type}</span>
+          </div>
+          ${accessedHtml}
+        </div>
+      `;
+    }).join("");
+
+    return `
+      <div class="inspector-section" style="margin-top:16px; border-top:1px solid var(--border); padding-top:16px;">
+        <div class="inspector-label">Bağımlılıklar ve İlişkiler (Lineage)</div>
+        <div style="max-height:200px; overflow-y:auto; padding-right:4px;">
+          ${relHtml}
+          ${sqlHtml}
+        </div>
+        <button id="insp-show-lineage" class="btn-secondary" style="width:100%; margin-top:8px; justify-content:center;">Diyagramda Çizgilerle Göster</button>
+      </div>
+    `;
   }
 }

@@ -89,8 +89,7 @@ function parseSqlFile(content, fileName, folderName) {
     fields.push({ id: `f_${tableName.toLowerCase()}_${name.toLowerCase()}`, name, type, primary, notNull, unique, increment, default: defVal });
   }
 
-  const folderColors = { admin: '#a855f7', llm: '#f43f5e', web: '#10b981', other: '#3b82f6' };
-  return { id: `tbl_${tableName.toLowerCase()}`, name: tableName, color: folderColors[folderName] || '#6366f1', folder: folderName, fields };
+  return { id: `tbl_${tableName.toLowerCase()}`, name: tableName, folder: folderName, fields };
 }
 
 function generateTableSql(table) {
@@ -159,14 +158,29 @@ export default defineConfig({
             try {
               const tablesDir = path.join(sqlProjDir, 'tables');
               const tables    = [];
+              const folders   = [];
+              const folderColorMap = {};
+              const palette = ['#a855f7', '#f43f5e', '#10b981', '#3b82f6', '#f59e0b', '#ec4899', '#8b5cf6'];
+              let cIdx = 0;
+
               if (fs.existsSync(tablesDir)) {
                 for (const folder of fs.readdirSync(tablesDir)) {
                   const fp = path.join(tablesDir, folder);
                   if (!fs.statSync(fp).isDirectory()) continue;
+                  
+                  if (!folderColorMap[folder]) {
+                    folderColorMap[folder] = palette[cIdx % palette.length];
+                    folders.push({ id: folder, name: folder.charAt(0).toUpperCase() + folder.slice(1), color: folderColorMap[folder] });
+                    cIdx++;
+                  }
+
                   for (const file of fs.readdirSync(fp)) {
                     if (!file.endsWith('.sql')) continue;
                     const parsed = parseSqlFile(fs.readFileSync(path.join(fp, file), 'utf-8'), file, folder);
-                    if (parsed) tables.push(parsed);
+                    if (parsed) {
+                      parsed.color = folderColorMap[folder];
+                      tables.push(parsed);
+                    }
                   }
                 }
               }
@@ -196,7 +210,7 @@ export default defineConfig({
                 views: scanDbObjects('views', tables), procedures: scanDbObjects('procedures', tables),
                 functions: scanDbObjects('functions', tables), triggers: scanDbObjects('triggers', tables),
                 notes: [{ id: 'note_welcome_sql', title: 'SQL Klasörü Aktif', content: "Bu diyagram 'sql/projects/default' dizininden oluşturuldu.", x: 100, y: 10, width: 280, height: 80, color: '#bbf7d0' }],
-                areas: [], enums: []
+                areas: [], enums: [], folders
               });
             } catch (err) { jsonErr(res, 500, err.message); }
             return;
@@ -350,7 +364,7 @@ export default defineConfig({
               ensureDir(diagsDir);
               const data   = await readBody(req);
               const id     = data.id || ('diag_' + Date.now().toString(36));
-              const safeName = (data.name || 'diagram').replace(/[^a-zA-Z0-9_\-ÀàÂâÇçÉéÈèÊêËëÎîÏïÔôÙùÛûÜü ]/g, '').replace(/\s+/g, '_').substring(0, 80);
+              const safeName = (data.name || 'diagram').replace(/[^a-zA-Z0-9_\-ÀàÂâÇçÉéÈèÊêËëÎîÏïÔôÙùÛûÜüğĞıİşŞöÖ ]/g, '').replace(/\s+/g, '_').substring(0, 80) || 'diagram';
               const fileName = `${safeName}_${id}.json`;
               // Remove old file if id matches an existing one
               const oldFile = fs.readdirSync(diagsDir).find(f => f.includes(`_${id}.json`));
@@ -401,7 +415,7 @@ export default defineConfig({
               existing.name  = name;
               existing.savedAt = new Date().toISOString();
               fs.unlinkSync(path.join(diagsDir, oldFile));
-              const safeName = (name || 'diagram').replace(/[^a-zA-Z0-9_\- ]/g, '').replace(/\s+/g, '_').substring(0, 80);
+              const safeName = (name || 'diagram').replace(/[^a-zA-Z0-9_\-ÀàÂâÇçÉéÈèÊêËëÎîÏïÔôÙùÛûÜüğĞıİşŞöÖ ]/g, '').replace(/\s+/g, '_').substring(0, 80) || 'diagram';
               writeJson(path.join(diagsDir, `${safeName}_${id}.json`), existing);
               jsonOk(res, { success: true });
             } catch (err) { jsonErr(res, 500, err.message); }

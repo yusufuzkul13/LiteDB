@@ -9,20 +9,116 @@ export class CanvasRenderer {
     this.notesLayer = document.getElementById("notes-layer");
     this.areasLayer = document.getElementById("areas-layer");
     this.objectsLayer = document.getElementById("objects-layer");
+    this.inLineageMode = false;
+    this.lockedTableId = null;
     this.setupRelatedObjectsListener();
+
+    // Canvas background click clears the focus lock
+    let bgMouseDownX = 0;
+    let bgMouseDownY = 0;
+    const bg = document.getElementById("canvas-bg");
+    if (bg) {
+      bg.addEventListener("mousedown", (e) => {
+        bgMouseDownX = e.clientX;
+        bgMouseDownY = e.clientY;
+      });
+      bg.addEventListener("click", (e) => {
+        const dist = Math.hypot(e.clientX - bgMouseDownX, e.clientY - bgMouseDownY);
+        // Only clear if it was a true click (moved less than 5px)
+        if (dist < 5) {
+          if (this.lockedTableId) {
+            this.lockedTableId = null;
+            this.clearHighlights();
+          }
+        }
+      });
+    }
+
+    // Clear focus lock when select tool is activated
+    const selectToolBtn = document.getElementById("tool-select");
+    if (selectToolBtn) {
+      selectToolBtn.addEventListener("click", () => {
+        if (this.lockedTableId) {
+          this.lockedTableId = null;
+          this.clearHighlights();
+        }
+      });
+    }
+  }
+
+  applyHighlight(tableId) {
+    const relatedRels = stateManager.state.relationships.filter(r => r.startTableId === tableId || r.endTableId === tableId);
+    const relatedTableIds = new Set(relatedRels.flatMap(r => [r.startTableId, r.endTableId]));
+    relatedTableIds.add(tableId);
+
+    document.querySelectorAll(".table-card").forEach(tc => {
+      const tcId = tc.parentElement.id.replace("table-", "");
+      if (!relatedTableIds.has(tcId)) {
+        tc.style.opacity = "0.15";
+        tc.style.filter = "grayscale(50%)";
+        tc.style.transition = "all 0.15s ease";
+      } else {
+        tc.style.opacity = "1";
+        tc.style.transition = "all 0.15s ease";
+        if (tcId === tableId) {
+          tc.style.boxShadow = "0 0 15px rgba(99,102,241,0.4)";
+        }
+      }
+    });
+
+    document.querySelectorAll(".rel-path").forEach(p => {
+      p.style.opacity = "0.1";
+      p.style.transition = "all 0.15s ease";
+    });
+
+    document.querySelectorAll(`.rel-path[data-start-table-id="${tableId}"], .rel-path[data-end-table-id="${tableId}"]`).forEach(p => {
+      p.style.opacity = "1";
+      p.style.strokeWidth = "3.5";
+      p.style.stroke = "var(--primary-h)";
+    });
+  }
+
+  clearHighlights() {
+    document.querySelectorAll(".table-card").forEach(tc => {
+      tc.style.opacity = "1";
+      tc.style.filter = "none";
+      tc.style.boxShadow = "var(--shadow)";
+    });
+    document.querySelectorAll(".rel-path").forEach(p => {
+      p.style.opacity = "1";
+      p.style.strokeWidth = "2.5";
+      p.style.stroke = "var(--rel-color)";
+    });
   }
 
   render(state) {
+    const exitBtn = document.getElementById("exit-lineage-btn");
+    if (exitBtn && !this.inLineageMode) {
+      exitBtn.style.display = "none";
+    }
+
+    if (this.inLineageMode) {
+      return;
+    }
+
     // Restore standard display/styles before rendering
     document.querySelectorAll("foreignObject, g[id^='area-group-'], path.rel-path").forEach(el => {
       el.style.display = "";
       el.style.opacity = "1";
     });
 
+    let tablesToRender = state.tables;
+    let relsToRender = state.relationships;
+    if (this.isolatedFolderId) {
+      tablesToRender = state.tables.filter(t => t.folder === this.isolatedFolderId);
+      const tblIds = new Set(tablesToRender.map(t => t.id));
+      relsToRender = state.relationships.filter(r => tblIds.has(r.startTableId) && tblIds.has(r.endTableId));
+    }
+
     this.renderAreas(state.areas);
     this.renderNotes(state.notes);
-    this.renderTables(state.tables);
-    this.renderRelationships(state.relationships, state.tables);
+    this.renderTables(tablesToRender);
+    this.renderRelationships(relsToRender, tablesToRender);
 
     // Clear and draw dependency flows if selected
     if (this.objectsLayer) this.objectsLayer.innerHTML = "";
@@ -49,6 +145,15 @@ export class CanvasRenderer {
       });
     }
 
+    if (this.lockedTableId) {
+      const tableExists = tablesToRender.some(t => t.id === this.lockedTableId);
+      if (tableExists) {
+        this.applyHighlight(this.lockedTableId);
+      } else {
+        this.lockedTableId = null;
+      }
+    }
+
     // Toggle empty state
     const isEmpty = state.tables.length === 0 && state.notes.length === 0 && state.areas.length === 0;
     const emptyState = document.getElementById("empty-state");
@@ -69,6 +174,11 @@ export class CanvasRenderer {
     window.addEventListener('showTableLineage', (e) => {
       const { tableId, fkRelationships, relatedSqlObjects } = e.detail;
       this.renderTableLineage(tableId, fkRelationships, relatedSqlObjects);
+    });
+
+    window.addEventListener('isolateFolder', (e) => {
+      this.isolatedFolderId = e.detail;
+      this.render(stateManager.state);
     });
   }
 
@@ -120,6 +230,7 @@ export class CanvasRenderer {
    * Bu sayede DOM çakışması ve duplicate sorunları yaşanmaz.
    */
   renderTableLineage(tableId, fkRelationships, relatedSqlObjects) {
+    this.inLineageMode = true;
     const state = stateManager.state;
     const table = state.tables.find(t => t.id === tableId);
     if (!table) return;
@@ -342,14 +453,37 @@ export class CanvasRenderer {
       // FK label
       const midX = (startFX + endFX) / 2;
       const midY = (startFY + endFY) / 2;
+      
+      const startT = state.tables.find(t => t.id === rel.startTableId);
+      const endT = state.tables.find(t => t.id === rel.endTableId);
+      const startF = startT?.fields.find(f => f.id === rel.startFieldId);
+      const endF = endT?.fields.find(f => f.id === rel.endFieldId);
+      const fkDetails = startF && endF ? `${startF.name} ➔ ${endF.name}` : "";
+
+      const fkLabelWidth = fkDetails ? 100 : 60;
+      const fkLabelHeight = fkDetails ? 30 : 20;
+
       const labelFo = document.createElementNS("http://www.w3.org/2000/svg", "foreignObject");
-      labelFo.setAttribute("x", midX - 30);
-      labelFo.setAttribute("y", midY - 10);
-      labelFo.setAttribute("width", 60);
-      labelFo.setAttribute("height", 20);
+      labelFo.setAttribute("x", midX - fkLabelWidth / 2);
+      labelFo.setAttribute("y", midY - fkLabelHeight / 2);
+      labelFo.setAttribute("width", fkLabelWidth);
+      labelFo.setAttribute("height", fkLabelHeight);
+      
       const labelDiv = document.createElement("div");
-      labelDiv.style.cssText = "font-size:8px;font-weight:700;color:var(--rel-color);background:var(--surface);border-radius:3px;padding:1px 4px;text-align:center;opacity:0.9;border:1.5px solid var(--border)";
-      labelDiv.innerText = rel.type || "FK";
+      labelDiv.style.cssText = "font-size:8px;font-weight:700;color:var(--rel-color);background:var(--surface);border-radius:4px;padding:2px 4px;text-align:center;opacity:0.95;border:1.5px solid var(--border);display:flex;flex-direction:column;justify-content:center;gap:2px;cursor:help;";
+      labelDiv.title = fkDetails ? `Bağlantı:\n${startT?.name}.${startF?.name} ➔ ${endT?.name}.${endF?.name}` : "Foreign Key";
+
+      const fkMainSpan = document.createElement("span");
+      fkMainSpan.innerText = rel.type || "FK Bağlantısı";
+      labelDiv.appendChild(fkMainSpan);
+
+      if (fkDetails) {
+        const fkSubSpan = document.createElement("span");
+        fkSubSpan.style.cssText = "font-size:6.5px;color:var(--text2);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
+        fkSubSpan.innerText = fkDetails;
+        labelDiv.appendChild(fkSubSpan);
+      }
+
       labelFo.appendChild(labelDiv);
 
       this.objectsLayer.appendChild(path);
@@ -409,10 +543,18 @@ export class CanvasRenderer {
       fo.appendChild(card);
       this.objectsLayer.appendChild(fo);
 
+      // Distribute arrow start Y across the table height
+      const startYMin = centerY + 40; // leave space for header
+      const startYMax = centerY + centerH - 20; // leave space for bottom
+      let arrowStartY = centerY + centerH / 2;
+      if (relatedSqlObjects.length > 1) {
+        const step = (startYMax - startYMin) / (relatedSqlObjects.length - 1);
+        arrowStartY = startYMin + (i * step);
+      }
+
       // Ok: merkez tablodan SQL objesine
       const objMidY = objY + SQL_H / 2;
       const arrowStartX = centerX + TW;
-      const arrowStartY = centerY + centerH / 2;
       const arrowEndX = sqlX;
       const arrowEndY = objMidY;
       const adx = (arrowEndX - arrowStartX) * 0.55;
@@ -441,16 +583,44 @@ export class CanvasRenderer {
         opColor = "var(--danger)";
       }
 
-      const sqlMidX = (arrowStartX + arrowEndX) / 2;
+      let detailsText = "";
+      try {
+        const accessedFields = getAccessedFields(table.name, table.fields, obj.sql || "");
+        if (accessedFields && accessedFields.length > 0) {
+           detailsText = accessedFields.map(f => f.name).join(", ");
+        }
+      } catch (e) {}
+
+      const boxWidth = detailsText ? 120 : 70;
+      const boxHeight = detailsText ? 32 : 20;
+
+      // Staggering the label's X position to prevent horizontal overlap
+      const staggerX = (i % 2 === 0) ? -25 : 25;
+      const sqlMidX = (arrowStartX + arrowEndX) / 2 + staggerX;
       const sqlMidY = (arrowStartY + arrowEndY) / 2;
+      
       const opFo = document.createElementNS("http://www.w3.org/2000/svg", "foreignObject");
-      opFo.setAttribute("x", sqlMidX - 35);
-      opFo.setAttribute("y", sqlMidY - 10);
-      opFo.setAttribute("width", 70);
-      opFo.setAttribute("height", 20);
+      opFo.setAttribute("x", sqlMidX - boxWidth / 2);
+      opFo.setAttribute("y", sqlMidY - boxHeight / 2);
+      opFo.setAttribute("width", boxWidth);
+      opFo.setAttribute("height", boxHeight);
+      
       const opDiv = document.createElement("div");
-      opDiv.style.cssText = `font-size:7.5px;font-weight:800;color:${opColor};background:var(--surface);border-radius:3px;padding:1px 4px;text-align:center;border:1.5px solid ${opColor};opacity:0.95;text-transform:uppercase;`;
-      opDiv.innerText = opType;
+      opDiv.style.cssText = `font-size:7.5px;font-weight:800;color:${opColor};background:var(--surface);border-radius:4px;padding:2px 4px;text-align:center;border:1.5px solid ${opColor};opacity:0.95;display:flex;flex-direction:column;justify-content:center;gap:2px;overflow:hidden;cursor:help;`;
+      opDiv.title = detailsText ? `${opType} işlemleri şu kolonları etkiliyor/kullanıyor:\n${detailsText}` : opType;
+
+      const typeSpan = document.createElement("span");
+      typeSpan.style.textTransform = "uppercase";
+      typeSpan.innerText = opType;
+      opDiv.appendChild(typeSpan);
+      
+      if (detailsText) {
+          const detailSpan = document.createElement("span");
+          detailSpan.style.cssText = "font-size:6.5px;color:var(--text2);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
+          detailSpan.innerText = `Kolonlar: ${detailsText}`;
+          opDiv.appendChild(detailSpan);
+      }
+
       opFo.appendChild(opDiv);
       this.objectsLayer.appendChild(opFo);
     });
@@ -461,6 +631,35 @@ export class CanvasRenderer {
       infoBtn.style.display = "flex";
       infoBtn.style.background = "rgba(99,102,241,0.4)";
       infoBtn.style.borderColor = "#6366f1";
+    }
+
+    // Add explicit Exit Lineage Mode button
+    let exitBtn = document.getElementById("exit-lineage-btn");
+    if (!exitBtn) {
+      exitBtn = document.createElement("button");
+      exitBtn.id = "exit-lineage-btn";
+      exitBtn.innerText = "Tüm Tablolara Dön";
+      exitBtn.style.cssText = "position:absolute; top:24px; left:50%; transform:translateX(-50%); z-index:1000; padding:10px 20px; background:var(--danger); color:#fff; border:1px solid rgba(255,255,255,0.2); border-radius:30px; cursor:pointer; box-shadow:0 4px 16px rgba(239,68,68,0.4); font-weight:700; font-size:13px; transition:all 0.2s; display:flex; align-items:center; gap:8px;";
+      exitBtn.innerHTML = `<span>⤶</span> Tüm Tablolara Dön`;
+      exitBtn.onmouseenter = () => exitBtn.style.transform = "translateX(-50%) scale(1.05)";
+      exitBtn.onmouseleave = () => exitBtn.style.transform = "translateX(-50%) scale(1)";
+      
+      exitBtn.onclick = () => {
+        this.inLineageMode = false;
+        if (infoBtn) {
+          infoBtn.style.display = "none";
+        }
+        const legend = document.getElementById("lineage-legend");
+        if (legend) legend.style.display = "none";
+        this.cc.selectElement(null);
+        this.render(stateManager.state);
+        setTimeout(() => this.cc.fitToViewport(), 50);
+      };
+      
+      const wrapper = document.getElementById("canvas-wrapper");
+      if (wrapper) wrapper.appendChild(exitBtn);
+    } else {
+      exitBtn.style.display = "flex";
     }
 
     // Viewport'u bu lineage layoutuna göre odakla
@@ -725,9 +924,47 @@ export class CanvasRenderer {
 
       // Card drag trigger
       header.addEventListener("mousedown", (e) => this.cc.startDragging("table", table.id, e));
+      
+      let cardMouseDownX = 0;
+      let cardMouseDownY = 0;
+      card.addEventListener("mousedown", (e) => {
+        cardMouseDownX = e.clientX;
+        cardMouseDownY = e.clientY;
+      });
+
       card.addEventListener("click", (e) => {
+        const dist = Math.hypot(e.clientX - cardMouseDownX, e.clientY - cardMouseDownY);
+        // If dragged more than 5px (e.g. for panning), ignore this click event
+        if (dist >= 5) return;
+
+        // If in Hand Tool, toggle focus lock
+        if (this.cc.activeTool === "hand") {
+          e.stopPropagation();
+          if (this.lockedTableId === table.id) {
+            this.lockedTableId = null;
+            this.clearHighlights();
+          } else {
+            this.lockedTableId = table.id;
+            this.applyHighlight(table.id);
+          }
+          return;
+        }
+
         if (e.target.closest(".table-card-header")) return;
         this.cc.selectElement("table", table.id);
+      });
+
+      // Hover-based relationship highlighting
+      card.addEventListener("mouseenter", () => {
+        if (this.inLineageMode) return;
+        if (this.lockedTableId) return; // Skip hover if a focus lock is active
+        this.applyHighlight(table.id);
+      });
+
+      card.addEventListener("mouseleave", () => {
+        if (this.inLineageMode) return;
+        if (this.lockedTableId) return; // Don't clear highlights if locked
+        this.clearHighlights();
       });
 
       this.tablesLayer.appendChild(fo);
@@ -746,8 +983,18 @@ export class CanvasRenderer {
       if (startIndex === -1 || endIndex === -1) return;
 
       // Anchor coords calculations
-      const startSide = startTable.x < endTable.x ? "right" : "left";
-      const endSide = endTable.x < startTable.x ? "right" : "left";
+      const overlapPadding = 250;
+      const isOverlap = !(startTable.x + overlapPadding < endTable.x || endTable.x + overlapPadding < startTable.x);
+      
+      let startSide, endSide;
+      if (isOverlap) {
+         // Horizontally overlapping (stacked). Route both to the right edge to loop smoothly.
+         startSide = "right";
+         endSide = "right";
+      } else {
+         startSide = startTable.x < endTable.x ? "right" : "left";
+         endSide = endTable.x < startTable.x ? "right" : "left";
+      }
 
       const startX = startSide === "right" ? startTable.x + 220 : startTable.x;
       const startY = startTable.y + 42 + (startIndex * 26) + 13;
@@ -756,7 +1003,14 @@ export class CanvasRenderer {
       const endY = endTable.y + 42 + (endIndex * 26) + 13;
 
       // Draw path line with custom control points
-      const dx = Math.abs(endX - startX) * 0.5;
+      let dx = Math.abs(endX - startX) * 0.5;
+      if (isOverlap) {
+         // Force a wide loop if they overlap horizontally
+         dx = Math.max(Math.abs(endY - startY) * 0.6, 120);
+      } else {
+         dx = Math.max(dx, 80);
+      }
+
       const cx1 = startSide === "right" ? startX + dx : startX - dx;
       const cy1 = startY;
       const cx2 = endSide === "right" ? endX + dx : endX - dx;
@@ -770,6 +1024,8 @@ export class CanvasRenderer {
       path.setAttribute("class", "rel-path");
       path.setAttribute("marker-end", "url(#arrow-end)");
       path.setAttribute("marker-start", "url(#arrow-start)");
+      path.setAttribute("data-start-table-id", rel.startTableId);
+      path.setAttribute("data-end-table-id", rel.endTableId);
 
       // Click to select relationship
       path.addEventListener("click", (e) => {

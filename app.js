@@ -28,7 +28,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const currentSelectedType = selected ? selected.type : null;
     if (lastSelectedType === "db_object" && currentSelectedType !== "db_object") {
-      setTimeout(() => cc.fitToViewport(), 50);
+      if (!renderer.inLineageMode) {
+        setTimeout(() => cc.fitToViewport(), 50);
+      }
     }
     lastSelectedType = currentSelectedType;
   });

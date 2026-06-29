@@ -41,7 +41,7 @@ export class CanvasController {
       if (e.deltaY < 0) {
         this.zoom = Math.min(this.zoom * zoomFactor, 3);
       } else {
-        this.zoom = Math.max(this.zoom / zoomFactor, 0.2);
+        this.zoom = Math.max(this.zoom / zoomFactor, 0.02);
       }
 
       // Adjust pan so mouse point remains stable
@@ -188,7 +188,7 @@ export class CanvasController {
     const beforeZoomX = (cx - this.panX) / this.zoom;
     const beforeZoomY = (cy - this.panY) / this.zoom;
 
-    this.zoom = Math.min(Math.max(this.zoom * factor, 0.2), 3);
+    this.zoom = Math.min(Math.max(this.zoom * factor, 0.02), 3);
 
     this.panX = cx - beforeZoomX * this.zoom;
     this.panY = cy - beforeZoomY * this.zoom;

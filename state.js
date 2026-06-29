@@ -9,6 +9,7 @@ export class StateManager {
   getInitialState() {
     return {
       name: "Yeni Diyagram",
+      folders: [],
       tables: [],
       relationships: [],
       notes: [],
@@ -156,6 +157,24 @@ export class StateManager {
     this.notify();
   }
 
+  addFolder(folder) {
+    this.saveHistory();
+    this.state.folders.push(folder);
+    this.notify();
+  }
+
+  updateFolder(id, updates) {
+    this.saveHistory();
+    this.state.folders = this.state.folders.map(f => f.id === id ? { ...f, ...updates } : f);
+    this.notify();
+  }
+
+  deleteFolder(id) {
+    this.saveHistory();
+    this.state.folders = this.state.folders.filter(f => f.id !== id);
+    this.notify();
+  }
+
   updateDbObject(id, updates) {
     this.saveHistory();
     this.state.views = this.state.views.map(v => v.id === id ? { ...v, ...updates } : v);
@@ -165,11 +184,51 @@ export class StateManager {
     this.notify();
   }
 
+  addDbObject(type, obj) {
+    this.saveHistory();
+    if (type === "view") this.state.views.push(obj);
+    else if (type === "procedure") this.state.procedures.push(obj);
+    else if (type === "function") this.state.functions.push(obj);
+    else if (type === "trigger") this.state.triggers.push(obj);
+    this.notify();
+  }
+
+  deleteDbObject(type, id) {
+    this.saveHistory();
+    if (type === "view") this.state.views = this.state.views.filter(v => v.id !== id);
+    else if (type === "procedure") this.state.procedures = this.state.procedures.filter(p => p.id !== id);
+    else if (type === "function") this.state.functions = this.state.functions.filter(f => f.id !== id);
+    else if (type === "trigger") this.state.triggers = this.state.triggers.filter(t => t.id !== id);
+    this.notify();
+  }
+
   loadDiagram(data) {
     if (!data) return;
     this.saveHistory();
+    let initialFolders = Array.isArray(data.folders) ? data.folders : [];
+    
+    if (initialFolders.length === 0 && Array.isArray(data.tables)) {
+      const folderColorMap = {};
+      const palette = ['#a855f7', '#f43f5e', '#10b981', '#3b82f6', '#f59e0b', '#ec4899', '#8b5cf6'];
+      let cIdx = 0;
+      
+      data.tables.forEach(t => {
+        if (t.folder && !folderColorMap[t.folder]) {
+          const c = (t.color && t.color !== '#6366f1' && t.color !== '#3b82f6') ? t.color : palette[cIdx % palette.length];
+          folderColorMap[t.folder] = c;
+          initialFolders.push({
+            id: t.folder,
+            name: t.folder.charAt(0).toUpperCase() + t.folder.slice(1),
+            color: c
+          });
+          cIdx++;
+        }
+      });
+    }
+
     this.state = {
       name: data.name || "Yeni Diyagram",
+      folders: initialFolders,
       tables: Array.isArray(data.tables) ? data.tables : [],
       relationships: Array.isArray(data.relationships) ? data.relationships : [],
       notes: Array.isArray(data.notes) ? data.notes : [],
@@ -181,6 +240,7 @@ export class StateManager {
       triggers: Array.isArray(data.triggers) ? data.triggers : []
     };
     this.notify();
+    window.dispatchEvent(new CustomEvent('diagramLoaded'));
   }
 }
 
